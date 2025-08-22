@@ -69,4 +69,96 @@ body {
   margin: 12px 0;
 }
 
+.layout {
+  display: grid;
+  grid-template-columns: auto 260px;
+  gap: 16px;
+}
+
+.history {
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.history h2 {
+  font-size: 14px;
+  margin: 6px 0 10px;
+  color: #94a3b8;
+}
+
+.history .node {
+  padding: 6px 8px;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: #111827;
+  border: 1px solid #1f2937;
+  cursor: pointer;
+}
+
+.history .node.current {
+  outline: 2px solid #10b981;
+}
+
+.history .children {
+  margin-left: 12px;
+  border-left: 1px dashed #334155;
+  padding-left: 8px;
+}
+
+.moves-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+
+.moves-table th,
+.moves-table td {
+  border: 1px solid #1f2937;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.moves-table th {
+  background: #0f172a;
+  color: #94a3b8;
+}
+
+.moves-table td.ply {
+  width: 38px;
+  color: #94a3b8;
+}
+
+.moves-table td.move {
+  cursor: pointer;
+}
+
+.moves-table td.current {
+  outline: 2px solid #10b981;
+}
+
+.branch-chips {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip.current {
+  outline: 1px solid #10b981;
+}
+
 
