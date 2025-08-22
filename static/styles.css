@@ -19,9 +19,62 @@ body {
   margin-bottom: 16px;
 }
 
+/* Modern buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #111827;
+  color: #e2e8f0;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 14px rgba(2,6,23,0.35);
+  transition: background 120ms ease, border-color 120ms ease, transform 60ms ease, box-shadow 120ms ease, color 120ms ease;
+}
+
+.btn:hover {
+  background: #0f172a;
+  border-color: #475569;
+}
+
+.btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 2px 10px rgba(2,6,23,0.4);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #10b981;
+  border-color: #0ea371;
+  color: #0b1220;
+}
+
+.btn-primary:hover {
+  background: #34d399;
+  border-color: #10b981;
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: #475569;
+}
+
 .board {
   display: grid;
   gap: 6px;
+  grid-auto-rows: 64px;
+  grid-auto-columns: 64px;
+  justify-content: start;
+  align-content: start;
 }
 
 .cell {
@@ -33,6 +86,7 @@ body {
   font-weight: 700;
   border-radius: 8px;
   user-select: none;
+  box-sizing: border-box;
 }
 
 .card {
@@ -43,6 +97,11 @@ body {
 .collapsed {
   background: #0b1220;
   border: 1px dashed #334155;
+}
+
+.dot {
+  background: #0b1220;
+  color: #334155;
 }
 
 .p1 {
@@ -58,11 +117,18 @@ body {
 .clickable {
   cursor: pointer;
   outline: 2px solid #f59e0b;
+  outline-offset: -2px;
+}
+
+.suggested {
+  outline: 3px solid #10b981;
+  outline-offset: -2px;
 }
 
 #board .hint {
   outline: 3px dashed #f59e0b;
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35) inset;
+  outline-offset: -2px;
 }
 
 #info {
