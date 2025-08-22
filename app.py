@@ -138,6 +138,19 @@ def api_ai() -> Any:
     })
 
 
+@app.post('/api/solve')
+def api_solve() -> Any:
+    body = request.get_json(force=True)
+    db_path = body.get('db', DEFAULT_DB)
+    state = json_to_state(body['state'])
+    res = solve_with_cache(state, db_path)
+    return jsonify({
+        'ok': True,
+        'win': res.win,
+        'best': res.best_move,
+    })
+
+
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)
 

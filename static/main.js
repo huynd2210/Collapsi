@@ -10,6 +10,12 @@ let currentNodeId = null;
 // Linear stack for undo/redo on the most recent line
 let linearStack = [];
 let linearIndex = -1; // points at current node index in linearStack
+let editMode = false;
+let suggestedMove = null;
+let editorError = '';
+let placing = null; // reserved (not used in simplified editor)
+let editorXs = new Set();
+let editorOs = new Set();
 
 const elBoard = document.getElementById('board');
 const elInfo = document.getElementById('info');
@@ -26,6 +32,9 @@ document.getElementById('aiMove').addEventListener('click', async () => {
 });
 document.getElementById('undo').addEventListener('click', () => doUndo());
 document.getElementById('redo').addEventListener('click', () => doRedo());
+document.getElementById('editToggle').addEventListener('click', () => toggleEdit());
+document.getElementById('solve').addEventListener('click', () => doSolve());
+// Editor-only controls are shown in UI as the single Solve button when in edit mode
 
 async function newGame() {
   const size = elSize.value;
@@ -43,6 +52,7 @@ async function newGame() {
   legalMoves = data.legalMoves;
   gameOver = false;
   winnerSide = null;
+  suggestedMove = null;
   // reset history tree
   history = [];
   const rootId = genId();
@@ -69,32 +79,43 @@ function render() {
       const idx = r * width + c;
       const cell = document.createElement('div');
       cell.className = 'cell card';
-      const key = `${r},${c}`;
-      if (collapsed.has(key)) {
+      const token = getCellToken(r, c, collapsed);
+      if (token === '·') {
         cell.className = 'cell collapsed';
         cell.textContent = '·';
-      } else if (p1r === r && p1c === c) {
+      } else if (token === 'X') {
         cell.className = 'cell p1';
         cell.textContent = 'X';
-      } else if (p2r === r && p2c === c) {
+      } else if (token === 'O') {
         cell.className = 'cell p2';
         cell.textContent = 'O';
       } else {
-        cell.textContent = grid[idx];
+        cell.textContent = token;
       }
       const isLegal = legalMoves.some(([rr, cc]) => rr === r && cc === c);
-      if (!gameOver && isLegal && state.turn === humanSide) {
-        cell.classList.add('hint');
-      }
-      if (!gameOver && state.turn === humanSide && isLegal) {
+      if (editMode) {
         cell.classList.add('clickable');
-        cell.addEventListener('click', () => onClickMove(r, c));
+        cell.addEventListener('click', () => onEditCell(r, c));
+        cell.addEventListener('contextmenu', (e) => { e.preventDefault(); onRightClickCell(r, c); });
+      } else {
+        if (!gameOver && isLegal && state.turn === humanSide) {
+          cell.classList.add('hint');
+        }
+        if (!gameOver && state.turn === humanSide && isLegal) {
+          cell.classList.add('clickable');
+          cell.addEventListener('click', () => onClickMove(r, c));
+        }
+        if (suggestedMove && suggestedMove[0] === r && suggestedMove[1] === c) {
+          cell.classList.add('suggested');
+        }
       }
       elBoard.appendChild(cell);
     }
   }
   const base = `Turn: Player ${playerSymbol(state.turn)} — AI: ${playerSymbol(aiSide)} — You: ${playerSymbol(humanSide)}`;
-  elInfo.textContent = gameOver ? `${base} — Winner: Player ${playerSymbol(winnerSide)}` : base;
+  const mode = editMode ? ' — Edit mode' : '';
+  const err = editorError ? ` — Error: ${editorError}` : '';
+  elInfo.textContent = gameOver ? `${base}${mode}${err} — Winner: Player ${playerSymbol(winnerSide)}` : `${base}${mode}${err}`;
   renderHistory();
 }
 
@@ -387,6 +408,7 @@ function gotoNodeKeepLine(id) {
   const node = findNode(id);
   state = deepClone(node.state);
   currentNodeId = id;
+  suggestedMove = null;
   fetch('/api/legal', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -401,6 +423,185 @@ function gotoNodeKeepLine(id) {
         render();
       }
     });
+}
+
+function toggleEdit() {
+  editMode = !editMode;
+  suggestedMove = null;
+  editorError = '';
+  if (editMode) {
+    // Empty-looking board: keep grid valid (A) but collapse all cells so they render as '.'
+    const w = state.board.width;
+    const h = state.board.height;
+    state.board.grid = Array.from({ length: w * h }, () => 'A');
+    state.collapsed = [];
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        state.collapsed.push([r, c]);
+      }
+    }
+    state.p1 = [-1, -1];
+    state.p2 = [-1, -1];
+    editorXs = new Set();
+    editorOs = new Set();
+    state.turn = 1;
+    placing = null;
+  }
+  const solveBtn = document.getElementById('solve');
+  if (solveBtn) solveBtn.style.display = editMode ? '' : 'none';
+  render();
+}
+
+function onEditCell(r, c) {
+  const idx = r * state.board.width + c;
+  const key = `${r},${c}`;
+  const collapsedSet = new Set(state.collapsed.map(([rr, cc]) => `${rr},${cc}`));
+  const current = getCellToken(r, c, collapsedSet);
+  const order = ['·', 'A', '2', '3', '4', 'X', 'O'];
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  if (next === '·') {
+    if (!collapsedSet.has(key)) state.collapsed.push([r, c]);
+    editorXs.delete(key);
+    editorOs.delete(key);
+  } else if (next === 'X') {
+    editorXs.add(key);
+    editorOs.delete(key);
+    state.collapsed = state.collapsed.filter(([rr, cc]) => !(rr === r && cc === c));
+  } else if (next === 'O') {
+    editorOs.add(key);
+    editorXs.delete(key);
+    state.collapsed = state.collapsed.filter(([rr, cc]) => !(rr === r && cc === c));
+  } else {
+    state.board.grid[idx] = next;
+    state.collapsed = state.collapsed.filter(([rr, cc]) => !(rr === r && cc === c));
+    editorXs.delete(key);
+    editorOs.delete(key);
+  }
+  refreshLegal();
+}
+
+function refreshLegal() {
+  // Only compute legal moves if both players placed
+  if (!state || state.p1[0] < 0 || state.p1[1] < 0 || state.p2[0] < 0 || state.p2[1] < 0) {
+    render();
+    return;
+  }
+  fetch('/api/legal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok) {
+        legalMoves = data.legalMoves;
+        render();
+      }
+    });
+}
+
+function onRightClickCell(r, c) {
+  // Right-click collapses to '.'
+  const key = `${r},${c}`;
+  const collapsedSet = new Set(state.collapsed.map(([rr, cc]) => `${rr},${cc}`));
+  if (!collapsedSet.has(key)) state.collapsed.push([r, c]);
+  editorXs.delete(key);
+  editorOs.delete(key);
+  refreshLegal();
+}
+
+function getCellToken(r, c, collapsedSet) {
+  const key = `${r},${c}`;
+  if (editMode) {
+    if (editorXs.has(key)) return 'X';
+    if (editorOs.has(key)) return 'O';
+  } else {
+    if (state.p1[0] === r && state.p1[1] === c) return 'X';
+    if (state.p2[0] === r && state.p2[1] === c) return 'O';
+  }
+  if (collapsedSet.has(key)) return '·';
+  return state.board.grid[r * state.board.width + c];
+}
+
+function doSolve() {
+  suggestedMove = null;
+  // validate exactly one X and one O placed
+  // from editor overlays
+  const xCount = editorXs.size;
+  const oCount = editorOs.size;
+  if (xCount !== 1 || oCount !== 1) {
+    editorError = 'Place exactly one X and one O before solving';
+    render();
+    return;
+  }
+  // commit overlays into state positions
+  const [xr, xc] = Array.from(editorXs)[0].split(',').map(Number);
+  const [or, oc] = Array.from(editorOs)[0].split(',').map(Number);
+  state.p1 = [xr, xc];
+  state.p2 = [or, oc];
+  editorError = '';
+  fetch('/api/solve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok) {
+        // Exit editor mode and return to play with the edited board
+        editMode = false;
+        suggestedMove = null;
+        editorXs = new Set();
+        editorOs = new Set();
+        const solveBtn = document.getElementById('solve');
+        if (solveBtn) solveBtn.style.display = 'none';
+        // Ensure AI is the winning side for the edited position
+        if (data.win === true) {
+          aiSide = state.turn;
+          humanSide = state.turn === 1 ? 2 : 1;
+        } else {
+          aiSide = state.turn === 1 ? 2 : 1;
+          humanSide = state.turn;
+        }
+        // Refresh legal moves for the committed X/O positions
+        fetch('/api/legal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state }),
+        })
+          .then((r2) => r2.json())
+          .then((d2) => {
+            if (d2.ok) {
+              legalMoves = d2.legalMoves;
+              gameOver = legalMoves.length === 0;
+            }
+            // Reset history and linear stack to the edited position as a new game root
+            history = [];
+            const rootId = genId();
+            history.push({ id: rootId, parentId: null, state: deepClone(state), move: null, children: [] });
+            currentNodeId = rootId;
+            linearStack = [rootId];
+            linearIndex = 0;
+            render();
+            // If it's AI's turn, make the first move automatically
+            if (aiSide === state.turn && !gameOver) {
+              setTimeout(() => { aiMove(); }, 50);
+            }
+          });
+      }
+    });
+}
+
+function setPlacing(which) {
+  if (!editMode) return;
+  placing = which;
+}
+
+function clearPiece(which) {
+  if (!editMode) return;
+  if (which === 'X') state.p1 = [-1, -1];
+  if (which === 'O') state.p2 = [-1, -1];
+  refreshLegal();
 }
 
 // Auto-start
