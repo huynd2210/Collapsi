@@ -1,0 +1,10 @@
+^C:\WOODCHOP\COLLAPSI\CPP\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Woodchop/Collapsi/cpp -BC:/Woodchop/Collapsi/cpp/build --check-stamp-file C:/Woodchop/Collapsi/cpp/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
