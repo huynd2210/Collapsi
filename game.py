@@ -328,6 +328,33 @@ def _ensure_db_dir(db_path: str) -> None:
         os.makedirs(directory, exist_ok=True)
 
 
+def _resolve_db_path(db_path: str) -> str:
+    """Resolves a potentially unwritable DB path to a writable one, creating the directory if needed."""
+    try:
+        _ensure_db_dir(db_path)
+        return db_path
+    except PermissionError:
+        pass
+    # Try common writable locations
+    candidates = [
+        os.getenv('COLLAPSI_DB_DIR'),
+        '/opt/render/project/src/data',
+        os.path.join(os.getcwd(), 'data'),
+        '/tmp',
+    ]
+    base = os.path.basename(db_path) or 'collapsi.db'
+    for d in candidates:
+        if not d:
+            continue
+        try:
+            os.makedirs(d, exist_ok=True)
+            return os.path.join(d, base)
+        except Exception:
+            continue
+    # Last resort: current working directory
+    return base
+
+
 def _coord_to_str(c: Coord) -> str:
     """Converts a coordinate to a string for database storage."""
     return f"{c[0]},{c[1]}"
@@ -375,8 +402,9 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
 
 def db_lookup_state(db_path: str, key: str) -> Optional[Tuple[bool, Optional[Coord]]]:
     """Looks up a solved state from the database."""
-    _ensure_db_dir(db_path)
-    conn = sqlite3.connect(db_path)
+    resolved = _resolve_db_path(db_path)
+    _ensure_db_dir(resolved)
+    conn = sqlite3.connect(resolved)
     try:
         _ensure_db(conn)
         cur = conn.execute("SELECT win, best_move FROM states WHERE key = ?", (key,))
@@ -397,8 +425,9 @@ def db_lookup_state(db_path: str, key: str) -> Optional[Tuple[bool, Optional[Coo
 
 def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optional[Coord]) -> None:
     """Stores a solved game state in the database."""
-    _ensure_db_dir(db_path)
-    conn = sqlite3.connect(db_path)
+    resolved = _resolve_db_path(db_path)
+    _ensure_db_dir(resolved)
+    conn = sqlite3.connect(resolved)
     try:
         _ensure_db(conn)
         key = _state_key(state)

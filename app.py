@@ -188,8 +188,10 @@ if __name__ == '__main__':
     debug = debug_env in ('1', 'true', 'yes', 'on')
     # Ensure DB directory exists on startup if using a path with directories
     try:
-        from game import _ensure_db_dir
-        _ensure_db_dir(DEFAULT_DB)
+        from game import _ensure_db_dir, _resolve_db_path
+        # Resolve to a writable path and ensure the directory exists
+        DEFAULT_RESOLVED = _resolve_db_path(DEFAULT_DB)
+        _ensure_db_dir(DEFAULT_RESOLVED)
     except Exception:
         pass
     app.run(host=host, port=port, debug=debug)
