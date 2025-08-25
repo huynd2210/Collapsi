@@ -11,10 +11,10 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: COLLAPSI_DB
-        value: /var/data/collapsi.db
+        value: /opt/render/project/src/data/collapsi.db
     disks:
       - name: collapsi-data
-        mountPath: /var/data
+        mountPath: /opt/render/project/src/data
         sizeGB: 1
 
 
