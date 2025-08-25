@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+import os
 import sqlite3
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Set, Iterable
@@ -320,6 +321,13 @@ def aostar_solve(state: GameState, transposition: Optional[Dict[GameState, bool]
 # -------- Persistence (SQLite) --------
 
 
+def _ensure_db_dir(db_path: str) -> None:
+    """Ensures the directory for the SQLite DB exists before connecting."""
+    directory = os.path.dirname(db_path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+
+
 def _coord_to_str(c: Coord) -> str:
     """Converts a coordinate to a string for database storage."""
     return f"{c[0]},{c[1]}"
@@ -367,6 +375,7 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
 
 def db_lookup_state(db_path: str, key: str) -> Optional[Tuple[bool, Optional[Coord]]]:
     """Looks up a solved state from the database."""
+    _ensure_db_dir(db_path)
     conn = sqlite3.connect(db_path)
     try:
         _ensure_db(conn)
@@ -388,6 +397,7 @@ def db_lookup_state(db_path: str, key: str) -> Optional[Tuple[bool, Optional[Coo
 
 def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optional[Coord]) -> None:
     """Stores a solved game state in the database."""
+    _ensure_db_dir(db_path)
     conn = sqlite3.connect(db_path)
     try:
         _ensure_db(conn)

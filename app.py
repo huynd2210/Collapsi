@@ -186,6 +186,12 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', '5000'))
     debug_env = os.getenv('FLASK_DEBUG', os.getenv('DEBUG', 'false')).lower()
     debug = debug_env in ('1', 'true', 'yes', 'on')
+    # Ensure DB directory exists on startup if using a path with directories
+    try:
+        from game import _ensure_db_dir
+        _ensure_db_dir(DEFAULT_DB)
+    except Exception:
+        pass
     app.run(host=host, port=port, debug=debug)
 
 
