@@ -21,20 +21,3 @@ python app.py
 # open http://127.0.0.1:5000
 ```
 
-Dev
----
-
-- Run tests:
-```
-python -m pytest -q
-```
-- 3x3 deal uses 2xJ, 4xA, 3x2 to fit 9 cells.
-- DB cache defaults to `collapsi.db`.
-
-Notes
------
-
-- Movement is orthogonal with wrap-around, no revisiting cells during a move, cannot end on start or opponent, and collapsed cells are impassable.
-- Heuristic: prefer moves that leave opponent with exactly 1 reply; else by fewest replies.
-
-
