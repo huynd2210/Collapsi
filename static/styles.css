@@ -78,6 +78,7 @@ body {
 }
 
 .cell {
+  position: relative;
   width: 64px;
   height: 64px;
   display: flex;
@@ -112,6 +113,20 @@ body {
 .p2 {
   background: #ef4444;
   color: #0b1220;
+}
+
+.cell-num {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.6);
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  pointer-events: none;
 }
 
 .clickable {
