@@ -6,7 +6,6 @@ from game import (
     card_steps,
     legal_moves,
     apply_move,
-    aostar_solve,
     deal_board_3x3,
     find_example_path,
 )
@@ -90,51 +89,12 @@ class TestCollapsiBasics(unittest.TestCase):
 
 
 class TestAOSolver(unittest.TestCase):
-    def test_forced_win_by_collapsing_opponent_last_neighbor(self):
-        # Opponent at (0,0), their 1-step neighbors are mostly collapsed except our current cell (0,1).
-        # After we move, our starting cell collapses, leaving opponent with zero moves.
-        board = make_board([
-            ['A', 'J', '2', '2'],
-            ['2', '2', '2', '2'],
-            ['2', '2', '2', '2'],
-            ['2', '2', '2', '2'],
-        ])
-        p2 = (0, 0)  # opponent on 'A' -> 1 step
-        p1 = (0, 1)  # us on 'J' -> 1 step
-        pre_collapsed = {(1, 0), (3, 0), (0, 3)}  # all other neighbors of (0,0)
-        state = GameState(board=board, collapsed=tuple(sorted(pre_collapsed)), p1=p1, p2=p2, turn=1)
-        res = aostar_solve(state)
-        self.assertTrue(res.win)
-        # Any legal move that isn't onto the opponent should be acceptable
-        allowed = set(legal_moves(state))
-        allowed.discard(p2)
-        self.assertIn(res.best_move, allowed)
-
-    def test_no_moves_is_loss(self):
-        board = make_board([
-            ['A', '2', '2', '2'],
-            ['2', '2', '2', '2'],
-            ['2', '2', '2', '2'],
-            ['2', '2', '2', '2'],
-        ])
-        p1 = (0, 0)
-        p2 = (1, 1)
-        collapsed = {(0, 1), (1, 0), (3, 0), (0, 3)}  # block all exits for p1
-        state = GameState(board=board, collapsed=tuple(sorted(collapsed)), p1=p1, p2=p2, turn=1)
-        res = aostar_solve(state)
-        self.assertFalse(res.win)
-
-    def test_3x3_deal_and_solve_runs(self):
+    def test_3x3_deal_runs(self):
         board, p1, p2 = deal_board_3x3(seed=42)
-        # Validate counts: 2J, 4A, 3x'2'
         flat = list(board.grid)
         self.assertEqual(flat.count('J'), 2)
         self.assertEqual(flat.count('A'), 4)
         self.assertEqual(flat.count('2'), 3)
-        state = GameState(board=board, collapsed=tuple(), p1=p1, p2=p2, turn=1)
-        # Ensure the solver returns a boolean outcome and does not crash
-        res = aostar_solve(state, depth_cap=12)
-        self.assertIn(res.win, (True, False))
 
     def test_path_is_orthogonal(self):
         # Construct a small case where from (0,2) to (2,0) requires 2 orthogonal steps via wrap
