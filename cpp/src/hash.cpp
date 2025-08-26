@@ -1,14 +1,14 @@
-#include "hash.hpp"
+#include "../include/hash.hpp"
 
 namespace collapsi {
 
-Key64 hash_state(bb_t a, bb_t b2, bb_t b3, bb_t b4, bb_t x, bb_t o, bb_t collapsed, uint8_t turn) {
-  uint64_t h = 0;
-  uint64_t v[8] = {a, b2, b3, b4, x, o, collapsed, static_cast<uint64_t>(turn)};
+Key64 hash_state(bb_t aMask, bb_t twoMask, bb_t threeMask, bb_t fourMask, bb_t xMask, bb_t oMask, bb_t collapsedMask, uint8_t turnValue) {
+  uint64_t hashValue = 0;
+  uint64_t values[8] = {aMask, twoMask, threeMask, fourMask, xMask, oMask, collapsedMask, static_cast<uint64_t>(turnValue)};
   for (int i = 0; i < 8; ++i) {
-    h = pair64(h, v[i]);
+    hashValue = pair64(hashValue, values[i]);
   }
-  return mix64(h);
+  return mix64(hashValue);
 }
 
 }
