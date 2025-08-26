@@ -4,7 +4,12 @@ import json
 import os
 from typing import Any, Dict, List, Tuple
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
+import logging
+import logging.handlers
+import io
+import zipfile
+import uuid
 
 from game import (
     Board,
@@ -69,11 +74,88 @@ def json_to_state(data: Dict[str, Any]) -> GameState:
 
 app = Flask(__name__, static_url_path='', static_folder='static')
 
+# Basic JSON-style logging to stdout (cloud-friendly)
+_logger = logging.getLogger("collapsi")
+if not _logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(message)s')
+    handler.setFormatter(formatter)
+    _logger.addHandler(handler)
+    _logger.setLevel(logging.INFO)
+
+# File logging with daily rotation
+LOG_DIR = os.getenv('COLLAPSI_LOG_DIR', os.path.join(os.getcwd(), 'logs'))
+try:
+    os.makedirs(LOG_DIR, exist_ok=True)
+    file_handler = logging.handlers.TimedRotatingFileHandler(
+        filename=os.path.join(LOG_DIR, 'collapsi.log'), when='midnight', backupCount=14, encoding='utf-8'
+    )
+    file_handler.setFormatter(logging.Formatter('%(message)s'))
+    _logger.addHandler(file_handler)
+except Exception:
+    pass
+
+def _log(event: str, **fields: object) -> None:
+    try:
+        payload = {"event": event}
+        payload.update(fields)
+        _logger.info(json.dumps(payload, separators=(",", ":")))
+    except Exception:
+        pass
+
+def _state_log_fields(state: GameState) -> Dict[str, Any]:
+    try:
+        return {
+            'width': state.board.width,
+            'height': state.board.height,
+            'grid': ''.join(state.board.grid),
+            'p1': {'r': int(state.p1[0]), 'c': int(state.p1[1])},
+            'p2': {'r': int(state.p2[0]), 'c': int(state.p2[1])},
+            'collapsed': [{'r': int(r), 'c': int(c)} for (r, c) in state.collapsed],
+            'collapsedCount': len(state.collapsed),
+            'turn': int(state.turn),
+        }
+    except Exception:
+        return {}
+
 
 @app.route('/')
 def index() -> Any:
     """Serves the main HTML page of the game."""
     return send_from_directory('static', 'index.html')
+
+
+@app.get('/api/logs/list')
+def api_logs_list() -> Any:
+    try:
+        files = []
+        for name in sorted(os.listdir(LOG_DIR)):
+            path = os.path.join(LOG_DIR, name)
+            if os.path.isfile(path):
+                st = os.stat(path)
+                files.append({
+                    'name': name,
+                    'size': st.st_size,
+                    'mtime': int(st.st_mtime),
+                })
+        return jsonify({'ok': True, 'files': files})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.get('/api/logs/bundle')
+def api_logs_bundle() -> Any:
+    try:
+        mem = io.BytesIO()
+        with zipfile.ZipFile(mem, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name in sorted(os.listdir(LOG_DIR)):
+                path = os.path.join(LOG_DIR, name)
+                if os.path.isfile(path):
+                    z.write(path, arcname=name)
+        mem.seek(0)
+        return send_file(mem, mimetype='application/zip', as_attachment=True, download_name='collapsi-logs.zip')
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @app.post('/api/new')
@@ -87,6 +169,7 @@ def api_new() -> Any:
     size = str(body.get('size', '4'))
     seed = body.get('seed', None)
     db_path = body.get('db', DEFAULT_DB)
+    req_id = str(uuid.uuid4())
     if size == '3':
         board, p1, p2 = deal_board_3x3(seed=seed)
     else:
@@ -94,6 +177,7 @@ def api_new() -> Any:
     ai_side = choose_ai_side_for_board(board, p1, p2, db_path)
     human_side = 2 if ai_side == 1 else 1
     state = GameState(board=board, collapsed=tuple(), p1=p1, p2=p2, turn=1)
+    _log("new_game", requestId=req_id, size=size, seed=seed, aiSide=ai_side, humanSide=human_side, state=_state_log_fields(state))
     return jsonify({
         'ok': True,
         'state': state_to_json(state, ai_side=ai_side, human_side=human_side),
@@ -121,15 +205,20 @@ def api_move() -> Any:
     """
     body = request.get_json(force=True)
     db_path = body.get('db', DEFAULT_DB)
+    req_id = str(uuid.uuid4())
     state = json_to_state(body['state'])
     move = tuple(body['move'])  # type: ignore
     legal = legal_moves(state)
     if move not in legal:
+        _log("illegal_move", requestId=req_id, state=_state_log_fields(state), move={'r': move[0], 'c': move[1]})
         return jsonify({'ok': False, 'error': 'Illegal move', 'legalMoves': legal}), 400
     path = find_example_path(state, move)
     next_state = apply_move(state, move)
     # Pre-cache the solution for the next player's turn to speed up AI response.
     solve_with_cache(next_state, db_path)
+    _log("human_move", requestId=req_id, 
+         fromState=_state_log_fields(state), toState=_state_log_fields(next_state), 
+         move={'r': move[0], 'c': move[1]})
     return jsonify({
         'ok': True,
         'state': state_to_json(next_state),
@@ -147,10 +236,12 @@ def api_ai() -> Any:
     """
     body = request.get_json(force=True)
     db_path = body.get('db', DEFAULT_DB)
+    req_id = str(uuid.uuid4())
     state = json_to_state(body['state'])
     move = ai_pick_move(state, db_path)
     legal = legal_moves(state)
     if not legal:
+        _log("ai_no_moves", requestId=req_id, state=_state_log_fields(state), winner=state.other_player())
         return jsonify({'ok': True, 'state': state_to_json(state), 'legalMoves': [], 'winner': state.other_player()})
     if move is None:
         # If no winning move is found, use a heuristic to pick the best available move.
@@ -158,6 +249,19 @@ def api_ai() -> Any:
     path = find_example_path(state, move)
     next_state = apply_move(state, move)
     solve_with_cache(next_state, db_path)
+    try:
+        from game import solve_with_cache as _solve
+        # Log start and next state outcomes to detect suspicious contradictions
+        start = _solve(state, db_path)
+        after = _solve(next_state, db_path)
+        _log("ai_move", requestId=req_id, 
+             fromState=_state_log_fields(state), toState=_state_log_fields(next_state), 
+             move={'r': move[0], 'c': move[1]}, startWin=start.win, startPlies=start.plies, nextHumanWin=after.win, nextPlies=after.plies)
+        if start.win and after.win:
+            _log("anomaly_win_flip", requestId=req_id, note="AI had win but moved into human win", 
+                 fromState=_state_log_fields(state), toState=_state_log_fields(next_state))
+    except Exception:
+        pass
     return jsonify({
         'ok': True,
         'move': move,
@@ -177,7 +281,9 @@ def api_solve() -> Any:
     body = request.get_json(force=True)
     db_path = body.get('db', DEFAULT_DB)
     state = json_to_state(body['state'])
+    req_id = str(uuid.uuid4())
     res = solve_with_cache(state, db_path)
+    _log("solve", requestId=req_id, state=_state_log_fields(state), win=res.win, best=res.best_move, plies=res.plies)
     return jsonify({
         'ok': True,
         'win': res.win,
@@ -197,8 +303,10 @@ def api_solve_moves() -> Any:
     state = json_to_state(body['state'])
     moves = legal_moves(state)
     # Prefer C++ detailed output for per-move plies when available
+    req_id = str(uuid.uuid4())
     detailed = solve_moves_cpp(state)
     if detailed:
+        _log("solve_moves", requestId=req_id, state=_state_log_fields(state), count=len(detailed))
         return jsonify({'ok': True, 'moves': detailed})
     # Fallback to DB reads
     items: List[Dict[str, Any]] = []
