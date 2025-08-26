@@ -231,6 +231,7 @@ class SolveResult:
     win: bool
     best_move: Optional[Coord]
     proof_moves: Optional[Dict[GameState, Coord]]  # A minimal strategy to win.
+    plies: Optional[int]  # Exact plies to terminal under optimal play from current turn
 
 
 def opponent_move_count_after(state: GameState, my_move: Coord) -> int:
@@ -257,49 +258,77 @@ def choose_child_by_heuristic(state: GameState, moves: List[Coord]) -> List[Coor
     return [m for (m, _) in scored]
 
 
-def aostar_solve(state: GameState, transposition: Optional[Dict[GameState, bool]] = None, depth_cap: Optional[int] = None) -> SolveResult:
+def aostar_solve(state: GameState, transposition: Optional[Dict[GameState, Tuple[bool, int]]] = None, depth_cap: Optional[int] = None) -> SolveResult:
     """
     Solves the game from the current state using an AO* search algorithm.
     The algorithm explores the game tree to find if the current player has a forced win.
     A transposition table is used to cache results for previously seen game states.
     """
-    memo = transposition if transposition is not None else {}
+    memo: Dict[GameState, Tuple[bool, int]] = transposition if transposition is not None else {}
 
-    def solve_rec(s: GameState, depth: int) -> bool:
+    def solve_rec(s: GameState, depth: int) -> Tuple[bool, int]:
+        # Returns (can_win_for_side_to_move, plies_to_terminal_under_optimal_play)
         if depth_cap is not None and depth > depth_cap:
-            return False  # Assume no win if depth limit is exceeded.
+            return (False, 0)  # cut: treat as non-winning, unknown distance
         if s in memo:
             return memo[s]
         moves_me = legal_moves(s)
         if not moves_me:
-            memo[s] = False  # No legal moves, so it's a loss.
-            return False
-        # Explore moves in an order determined by the heuristic.
+            result = (False, 0)  # no moves: loss now, 0 plies left
+            memo[s] = result
+            return result
+        # Explore moves in heuristic order
         ordered = choose_child_by_heuristic(s, moves_me)
+        best_win_plies: Optional[int] = None  # minimize among winning moves
+        best_loss_plies: Optional[int] = None  # maximize among losing moves
         for move in ordered:
             s_after = apply_move(s, move)
             opp_moves = legal_moves(s_after)
             if not opp_moves:
-                memo[s] = True  # Opponent has no moves, so it's a win.
-                return True
-            # Assume the opponent will make the best move.
-            all_rebuttals_fail = True
+                # Immediate win in 1 ply (our move)
+                if best_win_plies is None or 1 < best_win_plies:
+                    best_win_plies = 1
+                continue
+            # Evaluate opponent replies
+            all_rebuttals_fail = True  # true if all replies still winning for us
+            worst_plies_if_win = 0  # opponent delays our win (max over replies)
+            best_plies_if_loss: Optional[int] = None  # opponent accelerates our loss (min over replies)
             for o in choose_child_by_heuristic(s_after, opp_moves):
                 s_after_opp = apply_move(s_after, o)
-                if not solve_rec(s_after_opp, depth + 2):
-                    # Opponent has a move that leads to a non-losing state for them.
+                win3, plies3 = solve_rec(s_after_opp, depth + 2)
+                if not win3:
                     all_rebuttals_fail = False
-                    break
+                    # loss path: opponent chooses the fastest
+                    cand = 2 + plies3
+                    if best_plies_if_loss is None or cand < best_plies_if_loss:
+                        best_plies_if_loss = cand
+                else:
+                    # win path: opponent chooses the slowest
+                    cand = 2 + plies3
+                    if cand > worst_plies_if_win:
+                        worst_plies_if_win = cand
             if all_rebuttals_fail:
-                memo[s] = True  # All opponent responses lead to a win for us.
-                return True
-        memo[s] = False  # No move guarantees a win.
-        return False
+                # This move forces a win; select move that minimizes plies vs opp delaying
+                if best_win_plies is None or worst_plies_if_win < best_win_plies:
+                    best_win_plies = worst_plies_if_win
+            else:
+                # This move is refuted; we (current player) would pick the move maximizing delay
+                if best_plies_if_loss is None:
+                    best_plies_if_loss = 2
+                if best_loss_plies is None or best_plies_if_loss > best_loss_plies:
+                    best_loss_plies = best_plies_if_loss
+        if best_win_plies is not None:
+            result = (True, best_win_plies)
+        else:
+            result = (False, best_loss_plies if best_loss_plies is not None else 0)
+        memo[s] = result
+        return result
 
-    can_win = solve_rec(state, 0)
+    can_win, plies = solve_rec(state, 0)
     best: Optional[Coord] = None
     if can_win:
-        # If a win is possible, find the first move that guarantees it.
+        # Choose a winning move that also minimizes plies under optimal opponent delay
+        best_plies = None
         for m in choose_child_by_heuristic(state, legal_moves(state)):
             s_after = apply_move(state, m)
             opp_moves = legal_moves(s_after)
@@ -307,15 +336,23 @@ def aostar_solve(state: GameState, transposition: Optional[Dict[GameState, bool]
                 best = m
                 break
             all_rebuttals_fail = True
+            worst_plies = 0
             for o in choose_child_by_heuristic(s_after, opp_moves):
                 s_after_opp = apply_move(s_after, o)
-                if not aostar_solve(s_after_opp, memo).win:
+                win3, plies3 = solve_rec(s_after_opp, 2)
+                if not win3:
                     all_rebuttals_fail = False
                     break
+                cand = 2 + plies3
+                if cand > worst_plies:
+                    worst_plies = cand
             if all_rebuttals_fail:
-                best = m
-                break
-    return SolveResult(can_win, best, None)
+                if best is None or worst_plies < (best_plies if best_plies is not None else 1 << 30):
+                    best = m
+                    best_plies = worst_plies
+                # keep searching to prefer shorter win in plies
+        # fallthrough if not set due to depth cap, best stays None
+    return SolveResult(can_win, best, None, plies)
 
 
 # -------- Persistence (SQLite) --------
@@ -379,7 +416,7 @@ def _state_key(state: GameState) -> str:
 
 
 def _ensure_db(conn: sqlite3.Connection) -> None:
-    """Ensures the database table for storing game states exists."""
+    """Ensures the database table for storing game states exists and is up to date."""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS states (
@@ -398,32 +435,39 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+    # Schema upgrade: add plies column if missing
+    cur = conn.execute("PRAGMA table_info(states)")
+    cols = [r[1] for r in cur.fetchall()]
+    if 'plies' not in cols:
+        conn.execute("ALTER TABLE states ADD COLUMN plies INTEGER")
+        conn.commit()
 
 
-def db_lookup_state(db_path: str, key: str) -> Optional[Tuple[bool, Optional[Coord]]]:
+def db_lookup_state(db_path: str, key: str) -> Optional[Tuple[bool, Optional[Coord], Optional[int]]]:
     """Looks up a solved state from the database."""
     resolved = _resolve_db_path(db_path)
     _ensure_db_dir(resolved)
     conn = sqlite3.connect(resolved)
     try:
         _ensure_db(conn)
-        cur = conn.execute("SELECT win, best_move FROM states WHERE key = ?", (key,))
+        cur = conn.execute("SELECT win, best_move, plies FROM states WHERE key = ?", (key,))
         row = cur.fetchone()
         if not row:
             return None
-        win_int, best_move_str = row
+        win_int, best_move_str, plies_val = row
         best_move: Optional[Coord]
         if best_move_str is None:
             best_move = None
         else:
             r_s, c_s = best_move_str.split(',')
             best_move = (int(r_s), int(c_s))
-        return (bool(win_int), best_move)
+        plies: Optional[int] = int(plies_val) if plies_val is not None else None
+        return (bool(win_int), best_move, plies)
     finally:
         conn.close()
 
 
-def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optional[Coord]) -> None:
+def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optional[Coord], plies: Optional[int]) -> None:
     """Stores a solved game state in the database."""
     resolved = _resolve_db_path(db_path)
     _ensure_db_dir(resolved)
@@ -435,8 +479,8 @@ def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optiona
         conn.execute(
             """
             INSERT OR REPLACE INTO states
-            (key, width, height, grid, p1, p2, collapsed, turn, win, best_move, solved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (key, width, height, grid, p1, p2, collapsed, turn, win, best_move, solved_at, plies)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 key,
@@ -450,6 +494,7 @@ def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optiona
                 1 if win else 0,
                 best_move_str,
                 datetime.utcnow().isoformat(timespec='seconds') + 'Z',
+                plies if plies is not None else None,
             ),
         )
         conn.commit()
@@ -462,11 +507,11 @@ def solve_with_cache(state: GameState, db_path: str, depth_cap: Optional[int] = 
     key = _state_key(state)
     looked = db_lookup_state(db_path, key)
     if looked is not None:
-        win, best = looked
-        return SolveResult(win=win, best_move=best, proof_moves=None)
+        win, best, plies = looked
+        return SolveResult(win=win, best_move=best, proof_moves=None, plies=plies)
     # Not found in cache; solve and then store the result.
     res = aostar_solve(state, depth_cap=depth_cap)
-    db_store_state(db_path, state, res.win, res.best_move)
+    db_store_state(db_path, state, res.win, res.best_move, res.plies)
     return res
 
 

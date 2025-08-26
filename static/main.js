@@ -21,6 +21,40 @@ const elBoard = document.getElementById('board');
 const elInfo = document.getElementById('info');
 const elSize = document.getElementById('size');
 const elSeed = document.getElementById('seed');
+const elStatus = document.getElementById('statusPanel');
+
+let solveReqSeq = 0;
+
+async function updateStatusPanel() {
+  if (!elStatus) return;
+  if (!state) { elStatus.textContent = ''; return; }
+  if (editMode) { elStatus.textContent = 'Edit mode — place X and O then Solve'; return; }
+  const current = state.turn === 1 ? 'X' : 'O';
+  const seq = ++solveReqSeq;
+  elStatus.textContent = 'Solving...';
+  try {
+    const resp = await fetch('/api/solve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state }),
+    });
+    const data = await resp.json();
+    if (seq !== solveReqSeq) return;
+    if (data && data.ok) {
+      if (data.plies != null) {
+        const outcome = data.win ? 'win' : 'loss';
+        elStatus.textContent = `Perfect play (${current} to move): ${outcome} in ${data.plies} plies`;
+      } else {
+        elStatus.textContent = `Perfect play (${current} to move): ${data.win ? 'win' : 'loss'}`;
+      }
+    } else {
+      elStatus.textContent = 'Solve failed';
+    }
+  } catch (e) {
+    if (seq !== solveReqSeq) return;
+    elStatus.textContent = 'Solve error';
+  }
+}
 
 document.getElementById('newGame').addEventListener('click', async () => {
   await newGame();
@@ -61,6 +95,7 @@ async function newGame() {
   linearStack = [rootId];
   linearIndex = 0;
   render();
+  await updateStatusPanel();
   await maybeAutoAI();
 }
 
@@ -160,6 +195,7 @@ async function onClickMove(r, c) {
   linearStack.push(currentNodeId);
   linearIndex = linearStack.length - 1;
   render();
+  await updateStatusPanel();
   // If AI turn after human, trigger AI (if not game over)
   if (!over && state.turn === aiSide) {
     await aiMove();
@@ -199,6 +235,7 @@ async function aiMove() {
   linearStack.push(currentNodeId);
   linearIndex = linearStack.length - 1;
   render();
+  await updateStatusPanel();
 }
 
 function playerSymbol(player) {
@@ -313,6 +350,7 @@ function gotoNode(id) {
         gameOver = legalMoves.length === 0;
         winnerSide = gameOver ? (state.turn === 1 ? 2 : 1) : null;
         render();
+        updateStatusPanel();
       }
     });
 }
@@ -431,6 +469,7 @@ function gotoNodeKeepLine(id) {
         gameOver = legalMoves.length === 0;
         winnerSide = gameOver ? (state.turn === 1 ? 2 : 1) : null;
         render();
+        updateStatusPanel();
       }
     });
 }
@@ -460,6 +499,7 @@ function toggleEdit() {
   const solveBtn = document.getElementById('solve');
   if (solveBtn) solveBtn.style.display = editMode ? '' : 'none';
   render();
+  updateStatusPanel();
 }
 
 function onEditCell(r, c) {
@@ -593,6 +633,7 @@ function doSolve() {
             linearStack = [rootId];
             linearIndex = 0;
             render();
+            updateStatusPanel();
             // If it's AI's turn, make the first move automatically
             if (aiSide === state.turn && !gameOver) {
               setTimeout(() => { aiMove(); }, 50);

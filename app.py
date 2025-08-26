@@ -178,6 +178,7 @@ def api_solve() -> Any:
         'ok': True,
         'win': res.win,
         'best': res.best_move,
+        'plies': res.plies,
     })
 
 
