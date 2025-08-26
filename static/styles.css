@@ -129,6 +129,20 @@ body {
   pointer-events: none;
 }
 
+.cell-plies {
+  position: absolute;
+  bottom: 4px;
+  left: 6px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #86efac;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  pointer-events: none;
+}
+
 .clickable {
   cursor: pointer;
   outline: 2px solid #f59e0b;

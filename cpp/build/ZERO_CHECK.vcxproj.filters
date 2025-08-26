@@ -1,13 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <CustomBuild Include="C:\Woodchop\Collapsi\cpp\build\CMakeFiles\2c11f29fe3ac48c92609e827df47c1ff\generate.stamp.rule">
+    <CustomBuild Include="C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\CMakeFiles\40cf5531672279c2f24a6b2d49de9094\generate.stamp.rule">
       <Filter>CMake Rules</Filter>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="CMake Rules">
-      <UniqueIdentifier>{622A2AB4-7BA0-3AE5-BC91-84BFC966D604}</UniqueIdentifier>
+      <UniqueIdentifier>{7C602BD4-F3CE-3EAB-AC55-9401E8F73540}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

@@ -85,7 +85,18 @@ int main(int argc, char** argv) {
   Answer answer = solver.solve(state);
   auto t1 = std::chrono::high_resolution_clock::now();
   auto ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-  std::cout << (answer.win ? 1 : 0) << " " << int(answer.best_move) << " " << ms << "us\n";
+  // Output: win best_move plies timeus | then list of top-move plies for legal moves
+  std::cout << (answer.win ? 1 : 0) << " " << int(answer.best_move) << " " << int(answer.plies) << " " << ms << "us";
+  const auto& topMoves = solver.last_top_moves();
+  const auto& topPlies = solver.last_top_move_plies();
+  const auto& topWins = solver.last_top_move_wins();
+  if (!topMoves.empty() && topMoves.size() == topPlies.size() && topWins.size() == topMoves.size()) {
+    std::cout << " |";
+    for (size_t i = 0; i < topMoves.size(); ++i) {
+      std::cout << " " << int(topMoves[i]) << ":" << topPlies[i] << ":" << int(topWins[i]);
+    }
+  }
+  std::cout << "\n";
   return 0;
 }
 

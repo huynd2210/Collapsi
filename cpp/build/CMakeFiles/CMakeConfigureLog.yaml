@@ -24,9 +24,9 @@ events:
       The output was:
       0
       MSBuild version 17.8.3+195e7f5a3 for .NET Framework
-      Build started 8/23/2025 6:55:19 AM.
+      Build started 8/27/2025 3:03:59 AM.
       
-      Project "C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\3.26.3\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
+      Project "C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\3.26.3\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
       PrepareForBuild:
         Creating directory "Debug\\".
         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
@@ -39,7 +39,7 @@ events:
         CMakeCXXCompilerId.cpp
       Link:
         C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:".\\CompilerIdCXX.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\\CompilerIdCXX.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\\CompilerIdCXX.lib" /MACHINE:X64 Debug\\CMakeCXXCompilerId.obj
-        CompilerIdCXX.vcxproj -> C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\3.26.3\\CompilerIdCXX\\CompilerIdCXX.exe
+        CompilerIdCXX.vcxproj -> C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\3.26.3\\CompilerIdCXX\\CompilerIdCXX.exe
       PostBuildEvent:
         for %%i in (cl.exe) do @echo CMAKE_CXX_COMPILER=%%~$PATH:i
         :VCEnd
@@ -47,13 +47,13 @@ events:
       FinalizeBuildStatus:
         Deleting file "Debug\\CompilerIdCXX.tlog\\unsuccessfulbuild".
         Touching "Debug\\CompilerIdCXX.tlog\\CompilerIdCXX.lastbuildstate".
-      Done Building Project "C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\3.26.3\\CompilerIdCXX\\CompilerIdCXX.vcxproj" (default targets).
+      Done Building Project "C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\3.26.3\\CompilerIdCXX\\CompilerIdCXX.vcxproj" (default targets).
       
       Build succeeded.
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:03.17
+      Time Elapsed 00:00:01.82
       
       
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
@@ -61,7 +61,7 @@ events:
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.vcxproj"
       
       The CXX compiler identification is MSVC, found in:
-        C:/Woodchop/Collapsi/cpp/build/CMakeFiles/3.26.3/CompilerIdCXX/CompilerIdCXX.exe
+        C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/3.26.3/CompilerIdCXX/CompilerIdCXX.exe
       
   -
     kind: "try_compile-v1"
@@ -72,8 +72,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "C:/Woodchop/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-4ev8kq"
-      binary: "C:/Woodchop/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-4ev8kq"
+      source: "C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-o7miic"
+      binary: "C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-o7miic"
     cmakeVariables:
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /GR /EHsc"
       CMAKE_CXX_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -82,39 +82,39 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: C:/Woodchop/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-4ev8kq
+        Change Dir: C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-o7miic
         
-        Run Build Command(s):C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe cmTC_b7f38.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n && MSBuild version 17.8.3+195e7f5a3 for .NET Framework
-        Build started 8/23/2025 6:55:23 AM.
+        Run Build Command(s):C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe cmTC_bd176.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n && MSBuild version 17.8.3+195e7f5a3 for .NET Framework
+        Build started 8/27/2025 3:04:02 AM.
         
-        Project "C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4ev8kq\\cmTC_b7f38.vcxproj" on node 1 (default targets).
+        Project "C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-o7miic\\cmTC_bd176.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_b7f38.dir\\Debug\\".
+          Creating directory "cmTC_bd176.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4ev8kq\\Debug\\".
-          Creating directory "cmTC_b7f38.dir\\Debug\\cmTC_b7f38.tlog\\".
+          Creating directory "C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-o7miic\\Debug\\".
+          Creating directory "cmTC_bd176.dir\\Debug\\cmTC_bd176.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_b7f38.dir\\Debug\\cmTC_b7f38.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_b7f38.dir\\Debug\\cmTC_b7f38.tlog\\unsuccessfulbuild".
+          Creating "cmTC_bd176.dir\\Debug\\cmTC_bd176.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_bd176.dir\\Debug\\cmTC_bd176.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_b7f38.dir\\Debug\\\\" /Fd"cmTC_b7f38.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.26\\Modules\\CMakeCXXCompilerABI.cpp"
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_bd176.dir\\Debug\\\\" /Fd"cmTC_bd176.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.26\\Modules\\CMakeCXXCompilerABI.cpp"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.38.33130 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_b7f38.dir\\Debug\\\\" /Fd"cmTC_b7f38.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.26\\Modules\\CMakeCXXCompilerABI.cpp"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_bd176.dir\\Debug\\\\" /Fd"cmTC_bd176.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.26\\Modules\\CMakeCXXCompilerABI.cpp"
           CMakeCXXCompilerABI.cpp
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4ev8kq\\Debug\\cmTC_b7f38.exe" /INCREMENTAL /ILK:"cmTC_b7f38.dir\\Debug\\cmTC_b7f38.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Woodchop/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-4ev8kq/Debug/cmTC_b7f38.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/Woodchop/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-4ev8kq/Debug/cmTC_b7f38.lib" /MACHINE:X64  /machine:x64 cmTC_b7f38.dir\\Debug\\CMakeCXXCompilerABI.obj
-          cmTC_b7f38.vcxproj -> C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4ev8kq\\Debug\\cmTC_b7f38.exe
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-o7miic\\Debug\\cmTC_bd176.exe" /INCREMENTAL /ILK:"cmTC_bd176.dir\\Debug\\cmTC_bd176.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-o7miic/Debug/cmTC_bd176.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/CMakeScratch/TryCompile-o7miic/Debug/cmTC_bd176.lib" /MACHINE:X64  /machine:x64 cmTC_bd176.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_bd176.vcxproj -> C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-o7miic\\Debug\\cmTC_bd176.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_b7f38.dir\\Debug\\cmTC_b7f38.tlog\\unsuccessfulbuild".
-          Touching "cmTC_b7f38.dir\\Debug\\cmTC_b7f38.tlog\\cmTC_b7f38.lastbuildstate".
-        Done Building Project "C:\\Woodchop\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-4ev8kq\\cmTC_b7f38.vcxproj" (default targets).
+          Deleting file "cmTC_bd176.dir\\Debug\\cmTC_bd176.tlog\\unsuccessfulbuild".
+          Touching "cmTC_bd176.dir\\Debug\\cmTC_bd176.tlog\\cmTC_bd176.lastbuildstate".
+        Done Building Project "C:\\Woodchop\\collapsi-deploy\\Collapsi\\cpp\\build\\CMakeFiles\\CMakeScratch\\TryCompile-o7miic\\cmTC_bd176.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:01.66
+        Time Elapsed 00:00:01.18
         
       exitCode: 0
 ...

@@ -1,6 +1,6 @@
-^C:\WOODCHOP\COLLAPSI\CPP\CMAKELISTS.TXT
+^C:\WOODCHOP\COLLAPSI-DEPLOY\COLLAPSI\CPP\CMAKELISTS.TXT
 setlocal
-"C:\Program Files\CMake\bin\cmake.exe" -SC:/Woodchop/Collapsi/cpp -BC:/Woodchop/Collapsi/cpp/build --check-stamp-file C:/Woodchop/Collapsi/cpp/build/CMakeFiles/generate.stamp
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Woodchop/collapsi-deploy/Collapsi/cpp -BC:/Woodchop/collapsi-deploy/Collapsi/cpp/build --check-stamp-file C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/generate.stamp
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone

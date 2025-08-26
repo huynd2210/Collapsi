@@ -17,6 +17,10 @@ from game import (
     choose_ai_side_for_board,
     ai_pick_move,
     find_example_path,
+    db_lookup_state,
+    db_store_state,
+    _state_key,
+    solve_moves_cpp,
 )
 
 
@@ -180,6 +184,34 @@ def api_solve() -> Any:
         'best': res.best_move,
         'plies': res.plies,
     })
+
+
+@app.post('/api/solve_moves')
+def api_solve_moves() -> Any:
+    """
+    For the current state, computes perfect-play outcomes for each legal move.
+    Returns an array of { move, win, plies }.
+    """
+    body = request.get_json(force=True)
+    db_path = body.get('db', DEFAULT_DB)
+    state = json_to_state(body['state'])
+    moves = legal_moves(state)
+    # Prefer C++ detailed output for per-move plies when available
+    detailed = solve_moves_cpp(state)
+    if detailed:
+        return jsonify({'ok': True, 'moves': detailed})
+    # Fallback to DB reads
+    items: List[Dict[str, Any]] = []
+    for mv in moves:
+        next_state = apply_move(state, mv)
+        key = _state_key(next_state)
+        looked = db_lookup_state(db_path, key)
+        if looked is not None:
+            win, best, plies = looked
+            items.append({'move': list(mv), 'win': win, 'plies': plies})
+        else:
+            items.append({'move': list(mv), 'win': None, 'plies': None})
+    return jsonify({'ok': True, 'moves': items})
 
 
 if __name__ == '__main__':

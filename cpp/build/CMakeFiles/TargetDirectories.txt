@@ -1,4 +1,4 @@
-C:/Woodchop/Collapsi/cpp/build/CMakeFiles/collapsi_core.dir
-C:/Woodchop/Collapsi/cpp/build/CMakeFiles/collapsi_cpp.dir
-C:/Woodchop/Collapsi/cpp/build/CMakeFiles/ALL_BUILD.dir
-C:/Woodchop/Collapsi/cpp/build/CMakeFiles/ZERO_CHECK.dir
+C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/collapsi_core.dir
+C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/collapsi_cpp.dir
+C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/ALL_BUILD.dir
+C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/ZERO_CHECK.dir

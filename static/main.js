@@ -24,36 +24,87 @@ const elSeed = document.getElementById('seed');
 const elStatus = document.getElementById('statusPanel');
 
 let solveReqSeq = 0;
+let movesReqSeq = 0;
+let statusTimer = null;
+let movesTimer = null;
+let lastStatusKey = null;
+let lastMovesKey = null;
+
+// Map from "r,c" -> { win: boolean, plies: number|null }
+let movePliesMap = new Map();
+
+async function updateMovePlies() {
+  // Skip during edit or missing state
+  if (!state || editMode) {
+    movePliesMap = new Map();
+    render();
+    lastMovesKey = null;
+    return;
+  }
+  const key = stateKey(state);
+  if (key === lastMovesKey) return; // no change, skip
+  if (movesTimer) window.clearTimeout(movesTimer);
+  const seq = ++movesReqSeq;
+  movesTimer = window.setTimeout(async () => {
+    try {
+      const resp = await fetch('/api/solve_moves', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state }),
+      });
+      const data = await resp.json();
+      if (seq !== movesReqSeq) return;
+      movePliesMap = new Map();
+      if (data && data.ok && Array.isArray(data.moves)) {
+        for (const it of data.moves) {
+          const [r, c] = it.move;
+          movePliesMap.set(`${r},${c}`, { win: !!it.win, plies: it.plies });
+        }
+      }
+      lastMovesKey = key;
+      render();
+    } catch (e) {
+      if (seq !== movesReqSeq) return;
+      // ignore network errors; leave prior map
+    }
+  }, 120);
+}
 
 async function updateStatusPanel() {
   if (!elStatus) return;
-  if (!state) { elStatus.textContent = ''; return; }
-  if (editMode) { elStatus.textContent = 'Edit mode — place X and O then Solve'; return; }
+  if (!state) { elStatus.textContent = ''; lastStatusKey = null; return; }
+  if (editMode) { elStatus.textContent = 'Edit mode — place X and O then Solve'; lastStatusKey = null; return; }
+  const key = stateKey(state);
+  if (key === lastStatusKey) return;
   const current = state.turn === 1 ? 'X' : 'O';
   const seq = ++solveReqSeq;
   elStatus.textContent = 'Solving...';
-  try {
-    const resp = await fetch('/api/solve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state }),
-    });
-    const data = await resp.json();
-    if (seq !== solveReqSeq) return;
-    if (data && data.ok) {
-      if (data.plies != null) {
-        const outcome = data.win ? 'win' : 'loss';
-        elStatus.textContent = `Perfect play (${current} to move): ${outcome} in ${data.plies} plies`;
+  if (statusTimer) window.clearTimeout(statusTimer);
+  statusTimer = window.setTimeout(async () => {
+    try {
+      const resp = await fetch('/api/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state }),
+      });
+      const data = await resp.json();
+      if (seq !== solveReqSeq) return;
+      if (data && data.ok) {
+        if (data.plies != null) {
+          const outcome = data.win ? 'win' : 'loss';
+          elStatus.textContent = `Perfect play (${current} to move): ${outcome} in ${data.plies} plies`;
+        } else {
+          elStatus.textContent = `Perfect play (${current} to move): ${data.win ? 'win' : 'loss'}`;
+        }
       } else {
-        elStatus.textContent = `Perfect play (${current} to move): ${data.win ? 'win' : 'loss'}`;
+        elStatus.textContent = 'Solve failed';
       }
-    } else {
-      elStatus.textContent = 'Solve failed';
+      lastStatusKey = key;
+    } catch (e) {
+      if (seq !== solveReqSeq) return;
+      elStatus.textContent = 'Solve error';
     }
-  } catch (e) {
-    if (seq !== solveReqSeq) return;
-    elStatus.textContent = 'Solve error';
-  }
+  }, 120);
 }
 
 document.getElementById('newGame').addEventListener('click', async () => {
@@ -96,6 +147,7 @@ async function newGame() {
   linearIndex = 0;
   render();
   await updateStatusPanel();
+  await updateMovePlies();
   await maybeAutoAI();
 }
 
@@ -136,6 +188,19 @@ function render() {
         cell.appendChild(badge);
       } else {
         cell.textContent = token;
+      }
+      // bottom-left plies badge for legal destination cells (if available)
+      const k = `${r},${c}`;
+      if (!editMode && movePliesMap.has(k)) {
+        const info = movePliesMap.get(k);
+        const pl = document.createElement('div');
+        pl.className = 'cell-plies';
+        if (info && info.plies != null) {
+          pl.textContent = String(info.plies);
+        } else {
+          pl.textContent = '–';
+        }
+        cell.appendChild(pl);
       }
       const isLegal = legalMoves.some(([rr, cc]) => rr === r && cc === c);
       if (editMode) {
@@ -196,6 +261,7 @@ async function onClickMove(r, c) {
   linearIndex = linearStack.length - 1;
   render();
   await updateStatusPanel();
+  await updateMovePlies();
   // If AI turn after human, trigger AI (if not game over)
   if (!over && state.turn === aiSide) {
     await aiMove();
@@ -236,6 +302,7 @@ async function aiMove() {
   linearIndex = linearStack.length - 1;
   render();
   await updateStatusPanel();
+  await updateMovePlies();
 }
 
 function playerSymbol(player) {
@@ -351,6 +418,7 @@ function gotoNode(id) {
         winnerSide = gameOver ? (state.turn === 1 ? 2 : 1) : null;
         render();
         updateStatusPanel();
+        updateMovePlies();
       }
     });
 }
@@ -470,6 +538,7 @@ function gotoNodeKeepLine(id) {
         winnerSide = gameOver ? (state.turn === 1 ? 2 : 1) : null;
         render();
         updateStatusPanel();
+        updateMovePlies();
       }
     });
 }
