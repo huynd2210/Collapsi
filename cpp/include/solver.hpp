@@ -1,20 +1,27 @@
 #pragma once
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 #include "bitboard.hpp"
 #include "hash.hpp"
 
 namespace collapsi {
 
-struct Answer { bool win; uint8_t best_move; }; // 0xFF none
+struct Answer { bool win; uint8_t best_move; uint16_t plies; }; // 0xFF none, plies to terminal
 
 class Solver {
 public:
   Answer solve(const BitState& s);
+  const std::vector<uint8_t>& last_top_moves() const { return top_moves_; }
+  const std::vector<int>& last_top_move_plies() const { return top_move_plies_; }
+  const std::vector<uint8_t>& last_top_move_wins() const { return top_move_wins_; }
 
 private:
   std::unordered_map<Key64, Answer, Key64Hasher> cache_;
-  Answer solve_rec(const BitState& s);
+  Answer solve_rec(const BitState& s, int depth);
+  std::vector<uint8_t> top_moves_;
+  std::vector<int> top_move_plies_;
+  std::vector<uint8_t> top_move_wins_;
 };
 
 // Heuristic: fewest opponent replies, prefer count==1 first

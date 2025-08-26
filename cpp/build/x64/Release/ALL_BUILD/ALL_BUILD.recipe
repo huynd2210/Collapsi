@@ -2,10 +2,10 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>C:\Woodchop\Collapsi\cpp\build\x64\Release\ZERO_CHECK</FullPath>
+      <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\x64\Release\ZERO_CHECK</FullPath>
     </ProjectOutput>
     <ProjectOutput>
-      <FullPath>C:\Woodchop\Collapsi\cpp\build\Release\collapsi_cpp.exe</FullPath>
+      <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\Release\collapsi_cpp.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
       <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\x64\Release\ALL_BUILD</FullPath>

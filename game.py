@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+import subprocess
 import os
 import sqlite3
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict, Set, Iterable
+from typing import List, Tuple, Optional, Dict, Set, Iterable, Any
 
 
 # -------- Collapsi core model --------
@@ -440,7 +441,7 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
     cols = [r[1] for r in cur.fetchall()]
     if 'plies' not in cols:
         conn.execute("ALTER TABLE states ADD COLUMN plies INTEGER")
-        conn.commit()
+    conn.commit()
 
 
 def db_lookup_state(db_path: str, key: str) -> Optional[Tuple[bool, Optional[Coord], Optional[int]]]:
@@ -502,17 +503,129 @@ def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optiona
         conn.close()
 
 
+def _find_cpp_exe() -> Optional[str]:
+    base = os.path.dirname(__file__)
+    candidates = [
+        os.path.join(base, 'cpp', 'build', 'Release', 'collapsi_cpp.exe'),
+        os.path.join(base, 'cpp', 'build-deploy', 'Release', 'collapsi_cpp.exe'),
+        os.path.join(base, 'cpp', 'build', 'Release', 'collapsi_cpp'),
+        os.path.join(base, 'cpp', 'build-deploy', 'Release', 'collapsi_cpp'),
+        'collapsi_cpp',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _state_to_cpp_arg(state: GameState) -> str:
+    # Only 4x4 supported by C++ solver
+    w = state.board.width
+    h = state.board.height
+    if w != 4 or h != 4:
+        raise ValueError('C++ solver supports 4x4 only')
+    a = 0
+    b2 = 0
+    b3 = 0
+    b4 = 0
+    for r in range(4):
+        for c in range(4):
+            idx = r * 4 + c
+            card = state.board.at(r, c)
+            if card in ('A', 'J'):
+                a |= (1 << idx)
+            elif card == '2':
+                b2 |= (1 << idx)
+            elif card == '3':
+                b3 |= (1 << idx)
+            elif card == '4':
+                b4 |= (1 << idx)
+    x = (1 << (state.p1[0] * 4 + state.p1[1]))
+    o = (1 << (state.p2[0] * 4 + state.p2[1]))
+    c = 0
+    for (rr, cc) in state.collapsed:
+        c |= (1 << (rr * 4 + cc))
+    turn = 0 if state.turn == 1 else 1
+    return f"{a:04x},{b2:04x},{b3:04x},{b4:04x},{x:04x},{o:04x},{c:04x},{turn:01x}"
+
+
+def _decode_best_move_byte(val: int) -> Optional[Coord]:
+    if val < 0 or val > 255:
+        return None
+    if val == 0xFF:
+        return None
+    to_idx = val & 0xF
+    # Return destination coordinate only
+    return (to_idx // 4, to_idx % 4)
+
+
 def solve_with_cache(state: GameState, db_path: str, depth_cap: Optional[int] = None) -> SolveResult:
-    """Solves a game state, using the database as a cache."""
-    key = _state_key(state)
-    looked = db_lookup_state(db_path, key)
-    if looked is not None:
-        win, best, plies = looked
-        return SolveResult(win=win, best_move=best, proof_moves=None, plies=plies)
-    # Not found in cache; solve and then store the result.
-    res = aostar_solve(state, depth_cap=depth_cap)
-    db_store_state(db_path, state, res.win, res.best_move, res.plies)
-    return res
+    """Solves a game state using the C++ solver; no Python AO* is used."""
+    try:
+        arg = _state_to_cpp_arg(state)
+    except Exception:
+        # Unsupported board size or malformed
+        return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
+    exe = _find_cpp_exe()
+    if not exe:
+        return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
+    try:
+        proc = subprocess.run([exe, '--state', arg], capture_output=True, text=True, check=False)
+        line = (proc.stdout or '').strip()
+        # expected: "win best plies timeus | m:p:w ..." or without the trailing list
+        parts = line.split('|')
+        head = parts[0].strip().split()
+        if len(head) >= 3:
+            win = (head[0] == '1')
+            try:
+                best_raw = int(head[1])
+            except Exception:
+                best_raw = 255
+            best_coord = _decode_best_move_byte(best_raw)
+            try:
+                plies = int(head[2])
+            except Exception:
+                plies = None
+            return SolveResult(win=win, best_move=best_coord, proof_moves=None, plies=plies)
+    except Exception:
+        pass
+    return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
+
+
+def solve_moves_cpp(state: GameState) -> List[Dict[str, Any]]:
+    """Returns per-legal-move plies/win from the C++ solver's detailed output."""
+    items: List[Dict[str, Any]] = []
+    try:
+        arg = _state_to_cpp_arg(state)
+    except Exception:
+        return items
+    exe = _find_cpp_exe()
+    if not exe:
+        return items
+    try:
+        proc = subprocess.run([exe, '--state', arg], capture_output=True, text=True, check=False)
+        line = (proc.stdout or '').strip()
+        parts = line.split('|')
+        if len(parts) < 2:
+            return items
+        tail = parts[1].strip()
+        if not tail:
+            return items
+        for tok in tail.split():
+            try:
+                m_str, p_str, w_str = tok.split(':')
+                m_val = int(m_str)
+                p_val = int(p_str)
+                w_val = int(w_str)
+                to_idx = m_val & 0xF
+                r = to_idx // 4
+                c = to_idx % 4
+                items.append({'move': [r, c], 'win': bool(w_val), 'plies': p_val})
+            except Exception:
+                continue
+    except Exception:
+        return items
+    return items
 
 
 def choose_ai_side_for_board(board: Board, p1: Coord, p2: Coord, db_path: str) -> int:
