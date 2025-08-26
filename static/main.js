@@ -86,9 +86,19 @@ function render() {
       } else if (token === 'X') {
         cell.className = 'cell p1';
         cell.textContent = 'X';
+        const badge = document.createElement('div');
+        badge.className = 'cell-num';
+        const val = state.board.grid[idx];
+        badge.textContent = String(val);
+        cell.appendChild(badge);
       } else if (token === 'O') {
         cell.className = 'cell p2';
         cell.textContent = 'O';
+        const badge = document.createElement('div');
+        badge.className = 'cell-num';
+        const val = state.board.grid[idx];
+        badge.textContent = String(val);
+        cell.appendChild(badge);
       } else {
         cell.textContent = token;
       }
