@@ -1,4 +1,4 @@
-#include "bitboard.hpp"
+#include "../include/bitboard.hpp"
 
 namespace collapsi {
 
@@ -30,58 +30,58 @@ const uint8_t NEI_RIGHT[BOARD_N] = {
   13, 14, 15, 12
 };
 
-uint8_t steps_from(const BitState& s, uint8_t idx) {
-  bb_t m = bit(idx);
-  if (s.bbA & m) return 1;
-  if (s.bb2 & m) return 2;
-  if (s.bb3 & m) return 3;
-  if (s.bb4 & m) return 4;
+uint8_t steps_from(const BitState& state, uint8_t cellIndex) {
+  bb_t cellMask = bit(cellIndex);
+  if (state.bbA & cellMask) return 1;
+  if (state.bb2 & cellMask) return 2;
+  if (state.bb3 & cellMask) return 3;
+  if (state.bb4 & cellMask) return 4;
   // If no card bitboard has this index, default to 1 (treat as A)
   return 1;
 }
 
-static void dfs_paths(const BitState& s, uint8_t cur, uint8_t start,
-                      uint8_t opp, uint8_t remaining,
-                      bb_t blocked, bb_t visited, bb_t& outMask) {
-  if (remaining == 0) {
-    if (cur != start && cur != opp) outMask |= bit(cur);
+static void dfs_paths(const BitState& state, uint8_t currentIndex, uint8_t startIndex,
+                      uint8_t opponentIndex, uint8_t remainingSteps,
+                      bb_t blockedMask, bb_t visitedMask, bb_t& outDestinationsMask) {
+  if (remainingSteps == 0) {
+    if (currentIndex != startIndex && currentIndex != opponentIndex) outDestinationsMask |= bit(currentIndex);
     return;
   }
-  auto try_step = [&](uint8_t nxt) {
-    bb_t b = bit(nxt);
-    if (blocked & b) return;
-    if (visited & b) return;
-    dfs_paths(s, nxt, start, opp, remaining - 1, blocked, static_cast<bb_t>(visited | b), outMask);
+  auto tryStep = [&](uint8_t nextIndex) {
+    bb_t nextBitMask = bit(nextIndex);
+    if (blockedMask & nextBitMask) return;
+    if (visitedMask & nextBitMask) return;
+    dfs_paths(state, nextIndex, startIndex, opponentIndex, static_cast<uint8_t>(remainingSteps - 1), blockedMask, static_cast<bb_t>(visitedMask | nextBitMask), outDestinationsMask);
   };
-  try_step(NEI_UP[cur]);
-  try_step(NEI_DOWN[cur]);
-  try_step(NEI_LEFT[cur]);
-  try_step(NEI_RIGHT[cur]);
+  tryStep(NEI_UP[currentIndex]);
+  tryStep(NEI_DOWN[currentIndex]);
+  tryStep(NEI_LEFT[currentIndex]);
+  tryStep(NEI_RIGHT[currentIndex]);
 }
 
-bb_t enumerate_destinations(const BitState& s, uint8_t startIdx, uint8_t steps, uint8_t oppIdx) {
-  bb_t out = 0;
-  bb_t blocked = s.bbCollapsed;
-  bb_t visited = bit(startIdx);
-  dfs_paths(s, startIdx, startIdx, oppIdx, steps, blocked, visited, out);
-  return out;
+bb_t enumerate_destinations(const BitState& state, uint8_t startIndex, uint8_t stepCount, uint8_t opponentIndex) {
+  bb_t destinationsMask = 0;
+  bb_t blockedMask = state.bbCollapsed;
+  bb_t visitedMask = bit(startIndex);
+  dfs_paths(state, startIndex, startIndex, opponentIndex, stepCount, blockedMask, visitedMask, destinationsMask);
+  return destinationsMask;
 }
 
-BitState apply_move(const BitState& s, uint8_t startIdx, uint8_t destIdx) {
-  BitState t = s;
+BitState apply_move(const BitState& state, uint8_t startIndex, uint8_t destIndex) {
+  BitState nextState = state;
   // collapse start cell
-  t.bbCollapsed = static_cast<bb_t>(t.bbCollapsed | bit(startIdx));
-  if (s.turn == 0) {
+  nextState.bbCollapsed = static_cast<bb_t>(nextState.bbCollapsed | bit(startIndex));
+  if (state.turn == 0) {
     // move X
-    t.bbX &= static_cast<bb_t>(~bit(startIdx));
-    t.bbX |= bit(destIdx);
-    t.turn = 1;
+    nextState.bbX &= static_cast<bb_t>(~bit(startIndex));
+    nextState.bbX |= bit(destIndex);
+    nextState.turn = 1;
   } else {
-    t.bbO &= static_cast<bb_t>(~bit(startIdx));
-    t.bbO |= bit(destIdx);
-    t.turn = 0;
+    nextState.bbO &= static_cast<bb_t>(~bit(startIndex));
+    nextState.bbO |= bit(destIndex);
+    nextState.turn = 0;
   }
-  return t;
+  return nextState;
 }
 
 }

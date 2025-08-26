@@ -1,80 +1,81 @@
-#include "solver.hpp"
+//#include remains the same
+#include "../include/solver.hpp"
 #include <vector>
 #include <algorithm>
 
 namespace collapsi {
 
-static uint8_t piece_idx(bb_t bb) {
+static uint8_t piece_idx(bb_t bitboard) {
   // Return index 0..15 of single-bit bitboard; undefined if none/multi
-  for (uint8_t i = 0; i < BOARD_N; ++i) if (bb & bit(i)) return i;
+  for (uint8_t cellIndex = 0; cellIndex < BOARD_N; ++cellIndex) if (bitboard & bit(cellIndex)) return cellIndex;
   return 0;
 }
 
-Answer Solver::solve(const BitState& s) {
-  return solve_rec(s);
+Answer Solver::solve(const BitState& state) {
+  return solve_rec(state);
 }
 
-Answer Solver::solve_rec(const BitState& s) {
-  Key64 k = hash_state(s.bbA, s.bb2, s.bb3, s.bb4, s.bbX, s.bbO, s.bbCollapsed, s.turn);
-  if (auto it = cache_.find(k); it != cache_.end()) return it->second;
+Answer Solver::solve_rec(const BitState& state) {
+  Key64 stateKey = hash_state(state.bbA, state.bb2, state.bb3, state.bb4, state.bbX, state.bbO, state.bbCollapsed, state.turn);
+  if (auto cacheIterator = cache_.find(stateKey); cacheIterator != cache_.end()) return cacheIterator->second;
 
-  const uint8_t meIdx = (s.turn == 0) ? piece_idx(s.bbX) : piece_idx(s.bbO);
-  const uint8_t oppIdx = (s.turn == 0) ? piece_idx(s.bbO) : piece_idx(s.bbX);
-  const uint8_t steps = steps_from(s, meIdx);
-  bb_t dests = enumerate_destinations(s, meIdx, steps, oppIdx);
-  if (dests == 0) {
-    Answer a{false, 0xFF};
-    cache_.emplace(k, a);
-    return a;
+  const uint8_t currentPlayerIndex = (state.turn == 0) ? piece_idx(state.bbX) : piece_idx(state.bbO);
+  const uint8_t opponentIndex = (state.turn == 0) ? piece_idx(state.bbO) : piece_idx(state.bbX);
+  const uint8_t stepCount = steps_from(state, currentPlayerIndex);
+  bb_t destinationsMask = enumerate_destinations(state, currentPlayerIndex, stepCount, opponentIndex);
+  if (destinationsMask == 0) {
+    Answer answer{false, 0xFF};
+    cache_.emplace(stateKey, answer);
+    return answer;
   }
 
   // Heuristic: order by opponent replies ascending, with 1 first
-  struct Item { uint8_t move; int oppReplies; };
-  std::vector<Item> items;
-  for (uint8_t to = 0; to < BOARD_N; ++to) if (dests & bit(to)) {
-    BitState t = apply_move(s, meIdx, to);
-    const uint8_t tMeIdx = (t.turn == 0) ? piece_idx(t.bbX) : piece_idx(t.bbO);
-    const uint8_t tOppIdx = (t.turn == 0) ? piece_idx(t.bbO) : piece_idx(t.bbX);
-    const uint8_t tSteps = steps_from(t, tMeIdx);
-    bb_t oppDests = enumerate_destinations(t, tMeIdx, tSteps, tOppIdx);
-    int cnt = 0; for (uint8_t j = 0; j < BOARD_N; ++j) if (oppDests & bit(j)) ++cnt;
-    items.push_back({encode_move(meIdx, to), cnt});
+  struct Item { uint8_t move; int opponentRepliesCount; };
+  std::vector<Item> orderedMoves;
+  for (uint8_t destinationIndex = 0; destinationIndex < BOARD_N; ++destinationIndex) if (destinationsMask & bit(destinationIndex)) {
+    BitState nextState = apply_move(state, currentPlayerIndex, destinationIndex);
+    const uint8_t nextCurrentPlayerIndex = (nextState.turn == 0) ? piece_idx(nextState.bbX) : piece_idx(nextState.bbO);
+    const uint8_t nextOpponentIndex = (nextState.turn == 0) ? piece_idx(nextState.bbO) : piece_idx(nextState.bbX);
+    const uint8_t nextStepCount = steps_from(nextState, nextCurrentPlayerIndex);
+    bb_t opponentDestinationsMask = enumerate_destinations(nextState, nextCurrentPlayerIndex, nextStepCount, nextOpponentIndex);
+    int replyCount = 0; for (uint8_t destinationIndex2 = 0; destinationIndex2 < BOARD_N; ++destinationIndex2) if (opponentDestinationsMask & bit(destinationIndex2)) ++replyCount;
+    orderedMoves.push_back({encode_move(currentPlayerIndex, destinationIndex), replyCount});
   }
   // Move with exactly 1 opp reply goes to front
-  std::stable_sort(items.begin(), items.end(), [](const Item& a, const Item& b){
-    if (a.oppReplies == 1 && b.oppReplies != 1) return true;
-    if (a.oppReplies != 1 && b.oppReplies == 1) return false;
-    return a.oppReplies < b.oppReplies;
+  std::stable_sort(orderedMoves.begin(), orderedMoves.end(), [](const Item& a, const Item& b){
+    if (a.opponentRepliesCount == 1 && b.opponentRepliesCount != 1) return true;
+    if (a.opponentRepliesCount != 1 && b.opponentRepliesCount == 1) return false;
+    return a.opponentRepliesCount < b.opponentRepliesCount;
   });
 
-  for (const Item& it : items) {
-    uint8_t to = move_to(it.move);
-    BitState t = apply_move(s, meIdx, to);
+  for (const Item& moveEntry : orderedMoves) {
+    uint8_t toIndex = move_to(moveEntry.move);
+    BitState nextState = apply_move(state, currentPlayerIndex, toIndex);
     // AND over opponent replies: if any reply leads to our loss, this move fails
-    const uint8_t tMeIdx = (t.turn == 0) ? piece_idx(t.bbX) : piece_idx(t.bbO);
-    const uint8_t tOppIdx = (t.turn == 0) ? piece_idx(t.bbO) : piece_idx(t.bbX);
-    const uint8_t tSteps = steps_from(t, tMeIdx);
-    bb_t oppDests = enumerate_destinations(t, tMeIdx, tSteps, tOppIdx);
-    bool allFail = true;
-    if (oppDests != 0) {
-      for (uint8_t j = 0; j < BOARD_N; ++j) if (oppDests & bit(j)) {
-        BitState tt = apply_move(t, tMeIdx, j);
-        Answer sub = solve_rec(tt);
+    const uint8_t nextCurrentPlayerIndex = (nextState.turn == 0) ? piece_idx(nextState.bbX) : piece_idx(nextState.bbO);
+    const uint8_t nextOpponentIndex = (nextState.turn == 0) ? piece_idx(nextState.bbO) : piece_idx(nextState.bbX);
+    const uint8_t nextStepCount = steps_from(nextState, nextCurrentPlayerIndex);
+    bb_t opponentDestinationsMask = enumerate_destinations(nextState, nextCurrentPlayerIndex, nextStepCount, nextOpponentIndex);
+    bool allOpponentRepliesLeadToOurWin = true;
+    if (opponentDestinationsMask != 0) {
+      for (uint8_t destinationIndex2 = 0; destinationIndex2 < BOARD_N; ++destinationIndex2) if (opponentDestinationsMask & bit(destinationIndex2)) {
+        BitState replyState = apply_move(nextState, nextCurrentPlayerIndex, destinationIndex2);
+        Answer replyAnswer = solve_rec(replyState);
         // If after opponent's reply we (next to move) cannot force a win,
         // then opponent has a refutation and our move fails.
-        if (!sub.win) { allFail = false; break; }
+        if (!replyAnswer.win) { allOpponentRepliesLeadToOurWin = false; break; }
       }
     }
-    if (allFail) {
-      Answer a{true, it.move};
-      cache_.emplace(k, a);
-      return a;
+    if (allOpponentRepliesLeadToOurWin) {
+      Answer answer{true, moveEntry.move};
+      cache_.emplace(stateKey, answer);
+      return answer;
     }
   }
 
-  Answer a{false, 0xFF};
-  cache_.emplace(k, a);
-  return a;
+  Answer answer{false, 0xFF};
+  cache_.emplace(stateKey, answer);
+  return answer;
 }
 
 }

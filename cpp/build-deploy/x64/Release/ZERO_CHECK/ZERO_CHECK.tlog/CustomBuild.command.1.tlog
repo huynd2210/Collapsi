@@ -1,0 +1,10 @@
+^C:\WOODCHOP\COLLAPSI-DEPLOY\COLLAPSI\CPP\BUILD-DEPLOY\CMAKEFILES\6471750602C87C676F1ADA2BEB6A9348\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Woodchop/collapsi-deploy/Collapsi/cpp -BC:/Woodchop/collapsi-deploy/Collapsi/cpp/build-deploy --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Woodchop/collapsi-deploy/Collapsi/cpp/build-deploy/collapsi_cpp.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
