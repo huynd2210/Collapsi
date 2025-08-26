@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
       std::cout << " " << int(topMoves[i]) << ":" << topPlies[i] << ":" << int(topWins[i]);
     }
   }
-  std::cout << "\n";
+  std::cout << std::endl;
   return 0;
 }
 

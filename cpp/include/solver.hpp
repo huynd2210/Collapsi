@@ -15,6 +15,7 @@ public:
   const std::vector<uint8_t>& last_top_moves() const { return top_moves_; }
   const std::vector<int>& last_top_move_plies() const { return top_move_plies_; }
   const std::vector<uint8_t>& last_top_move_wins() const { return top_move_wins_; }
+  void compute_root_move_metrics(const BitState& s);
 
 private:
   std::unordered_map<Key64, Answer, Key64Hasher> cache_;
