@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from flask import Flask, request, jsonify, send_from_directory, send_file
 import logging
@@ -118,6 +118,58 @@ def _state_log_fields(state: GameState) -> Dict[str, Any]:
     except Exception:
         return {}
 
+# In-memory game session tracker for summary logs
+_GAMES: Dict[str, Dict[str, Any]] = {}
+
+def _start_game(state: GameState) -> str:
+    gid = str(uuid.uuid4())
+    info: Dict[str, Any] = {
+        'width': int(state.board.width),
+        'height': int(state.board.height),
+        'originalGrid': ''.join(state.board.grid),
+        'moveHistory': [],  # list of [r,c,plies]
+        'expectedWinner': None,
+    }
+    try:
+        from game import solve_with_cache as _solve
+        res = _solve(state, 'collapsi.db')
+        info['expectedWinner'] = 1 if res.win else 2
+    except Exception:
+        info['expectedWinner'] = None
+    _GAMES[gid] = info
+    return gid
+
+def _append_move(gid: str, move: Tuple[int, int], plies: Optional[int]) -> None:
+    try:
+        entry = [int(move[0]), int(move[1]), int(plies) if plies is not None else None]
+        _GAMES.get(gid, {}).get('moveHistory', []).append(entry)
+    except Exception:
+        pass
+
+def _log_summary(gid: str, final_state: GameState, actual_winner: Optional[int]) -> None:
+    try:
+        info = _GAMES.get(gid)
+        if not info:
+            return
+        final_grid_pretty = final_state.board.pretty(final_state.p1, final_state.p2, set(final_state.collapsed))
+        record = {
+            'width': info.get('width'),
+            'height': info.get('height'),
+            'originalGrid': info.get('originalGrid'),
+            'moveHistory': info.get('moveHistory'),
+            'finalGrid': final_grid_pretty,
+            'expectedWinner': info.get('expectedWinner'),
+            'actualWinner': actual_winner,
+        }
+        _logger.info(json.dumps(record, separators=(",", ":")))
+    except Exception:
+        pass
+    finally:
+        try:
+            _GAMES.pop(gid, None)
+        except Exception:
+            pass
+
 
 @app.route('/')
 def index() -> Any:
@@ -177,11 +229,13 @@ def api_new() -> Any:
     ai_side = choose_ai_side_for_board(board, p1, p2, db_path)
     human_side = 2 if ai_side == 1 else 1
     state = GameState(board=board, collapsed=tuple(), p1=p1, p2=p2, turn=1)
+    game_id = _start_game(state)
     _log("new_game", requestId=req_id, size=size, seed=seed, aiSide=ai_side, humanSide=human_side, state=_state_log_fields(state))
     return jsonify({
         'ok': True,
         'state': state_to_json(state, ai_side=ai_side, human_side=human_side),
         'legalMoves': legal_moves(state),
+        'gameId': game_id,
     })
 
 
@@ -207,12 +261,21 @@ def api_move() -> Any:
     db_path = body.get('db', DEFAULT_DB)
     req_id = str(uuid.uuid4())
     state = json_to_state(body['state'])
+    game_id = body.get('gameId')
     move = tuple(body['move'])  # type: ignore
     legal = legal_moves(state)
     if move not in legal:
         _log("illegal_move", requestId=req_id, state=_state_log_fields(state), move={'r': move[0], 'c': move[1]})
         return jsonify({'ok': False, 'error': 'Illegal move', 'legalMoves': legal}), 400
     path = find_example_path(state, move)
+    # Append move with plies-left before applying
+    try:
+        from game import solve_with_cache as _solve
+        res = _solve(state, body.get('db', DEFAULT_DB))
+        if game_id:
+            _append_move(game_id, move, res.plies)
+    except Exception:
+        pass
     next_state = apply_move(state, move)
     # Pre-cache the solution for the next player's turn to speed up AI response.
     solve_with_cache(next_state, db_path)
@@ -224,6 +287,7 @@ def api_move() -> Any:
         'state': state_to_json(next_state),
         'legalMoves': legal_moves(next_state),
         'path': path,
+        'gameId': game_id,
     })
 
 
@@ -238,15 +302,24 @@ def api_ai() -> Any:
     db_path = body.get('db', DEFAULT_DB)
     req_id = str(uuid.uuid4())
     state = json_to_state(body['state'])
+    game_id = body.get('gameId')
     move = ai_pick_move(state, db_path)
     legal = legal_moves(state)
     if not legal:
         _log("ai_no_moves", requestId=req_id, state=_state_log_fields(state), winner=state.other_player())
-        return jsonify({'ok': True, 'state': state_to_json(state), 'legalMoves': [], 'winner': state.other_player()})
+        return jsonify({'ok': True, 'state': state_to_json(state), 'legalMoves': [], 'winner': state.other_player(), 'gameId': game_id})
     if move is None:
         # If no winning move is found, use a heuristic to pick the best available move.
         move = legal[0]
     path = find_example_path(state, move)
+    # Append AI move with plies-left before applying
+    try:
+        from game import solve_with_cache as _solve
+        res = _solve(state, body.get('db', DEFAULT_DB))
+        if game_id:
+            _append_move(game_id, move, res.plies)
+    except Exception:
+        pass
     next_state = apply_move(state, move)
     solve_with_cache(next_state, db_path)
     try:
@@ -262,12 +335,22 @@ def api_ai() -> Any:
                  fromState=_state_log_fields(state), toState=_state_log_fields(next_state))
     except Exception:
         pass
+    # If game concluded (opponent has no moves), log summary line and clear game session
+    try:
+        if game_id:
+            nxt_legal = legal_moves(next_state)
+            if not nxt_legal:
+                actual_winner = state.turn  # mover wins when opponent has no replies
+                _log_summary(game_id, next_state, actual_winner)
+    except Exception:
+        pass
     return jsonify({
         'ok': True,
         'move': move,
         'state': state_to_json(next_state),
         'legalMoves': legal_moves(next_state),
         'path': path,
+        'gameId': game_id,
     })
 
 
