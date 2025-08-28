@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
           // Solve both turns normalized (turn=0,1)
           for (uint8_t turn = 0; turn <= 1; ++turn) {
             if (solveTurnOnly >= 0 && static_cast<int>(turn) != solveTurnOnly) {
-              ++produced; // still advances produced to honor limit as per enumeration order
+              // Skip counting for non-selected turn – does not consume limit
               continue;
             }
             BitState s{aMask, twoMask, threeMask, fourMask, xMask, oMask, collMask, turn};
@@ -308,13 +308,21 @@ int main(int argc, char** argv) {
             if (since >= 2000) {
               auto msTotal = std::chrono::duration_cast<std::chrono::milliseconds>(now - t0).count();
               double rate = (msTotal > 0 ? (writtenSolved * 1000.0 / msTotal) : 0.0);
-              double pct = (limit > 0 ? (100.0 * produced / limit) : 0.0);
+              double pct = 0.0;
+              if (limit > 0) {
+                pct = (solveTurnOnly >= 0) ? (100.0 * (writtenSolved / static_cast<double>(limit)))
+                                           : (100.0 * (produced / static_cast<double>(limit)));
+              }
               std::cout << "progress produced=" << produced << " (" << pct << "%)"
                         << " wrote_solved=" << writtenSolved << " wrote_index=" << writtenIndex
                         << " elapsed_ms=" << msTotal << " rate_solved_per_s=" << rate << " flushes=" << flushed << "\n";
               last = now;
             }
-            if (limit > 0 && produced >= limit) {
+            bool hitLimit = false;
+            if (limit > 0) {
+              hitLimit = (solveTurnOnly >= 0) ? (writtenSolved >= limit) : (produced >= limit);
+            }
+            if (hitLimit) {
               if (!indexOnly && !buf.empty()) {
                 std::ofstream f(out, std::ios::binary | std::ios::app);
                 f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size() * sizeof(Record)));
