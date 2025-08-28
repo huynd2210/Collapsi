@@ -26,6 +26,7 @@ from game import (
     db_store_state,
     _state_key,
     solve_moves_cpp,
+    normalize_for_torus_view,
 )
 
 
@@ -372,6 +373,13 @@ def api_solve() -> Any:
         'win': res.win,
         'best': res.best_move,
         'plies': res.plies,
+        'normalized': (lambda: (lambda nb, p1, p2, col, dr, dc: {
+            'board': board_to_json(nb),
+            'p1': [p1[0], p1[1]],
+            'p2': [p2[0], p2[1]],
+            'collapsed': [[r, c] for (r, c) in col],
+            'shift': {'dr': dr, 'dc': dc},
+        })(*normalize_for_torus_view(state)))(),
     })
 
 

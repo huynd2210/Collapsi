@@ -8,6 +8,12 @@
       <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\Release\collapsi_cpp.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
+      <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\Release\gen_positions.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\Release\solve_norm_db.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
       <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\x64\Release\ALL_BUILD</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
