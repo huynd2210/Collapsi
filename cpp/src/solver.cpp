@@ -18,7 +18,7 @@ Answer Solver::solve(const BitState& state) {
   top_move_wins_.clear();
   Answer ans = solve_rec(state, /*depth=*/0);
   // Ensure root move metrics are available even when we short-circuit early
-  if (top_moves_.empty()) {
+  if (collect_root_metrics_ && top_moves_.empty()) {
     compute_root_move_metrics(state);
   }
   return ans;
@@ -90,6 +90,11 @@ Answer Solver::solve_rec(const BitState& state, int depth) {
           if (replyAnswer.plies + 2 > worstWinPlies) worstWinPlies = replyAnswer.plies + 2;
         }
       }
+    }
+    // Record edge for optional tree dump
+    if (capture_edges_) {
+      Key64 childKey = hash_state(nextState.bbA, nextState.bb2, nextState.bb3, nextState.bb4, nextState.bbX, nextState.bbO, nextState.bbCollapsed, nextState.turn);
+      edges_[stateKey].push_back(childKey);
     }
     if (allOpponentRepliesLeadToOurWin) {
       // Short-circuit: first winning line is enough
@@ -178,6 +183,49 @@ void Solver::compute_root_move_metrics(const BitState& state) {
     top_move_plies_.push_back(pl);
     top_move_wins_.push_back(static_cast<uint8_t>(allOpponentRepliesLeadToOurWin ? 1 : 0));
   }
+}
+
+void Solver::dump_tree_binary(const std::string& path, Key64 rootKey) const {
+  // Simple binary format:
+  // [u64 node_count]
+  // For each node: [u64 key][u8 win][u8 best_move][u16 plies][u32 edge_count][u64 edge_key]*
+  std::unordered_map<Key64, int, Key64Hasher> index;
+  std::vector<Key64> keys;
+  keys.reserve(cache_.size());
+  for (const auto& [k, _] : cache_) { index[k] = static_cast<int>(keys.size()); keys.push_back(k); }
+  FILE* f = fopen(path.c_str(), "wb");
+  if (!f) return;
+  uint64_t n = static_cast<uint64_t>(keys.size());
+  fwrite(&n, sizeof(uint64_t), 1, f);
+  for (Key64 k : keys) {
+    const Answer& a = cache_.at(k);
+    uint64_t key64 = k;
+    uint8_t win = a.win ? 1 : 0;
+    uint8_t best = a.best_move;
+    uint16_t pl = a.plies;
+    fwrite(&key64, sizeof(uint64_t), 1, f);
+    fwrite(&win, sizeof(uint8_t), 1, f);
+    fwrite(&best, sizeof(uint8_t), 1, f);
+    fwrite(&pl, sizeof(uint16_t), 1, f);
+    auto it = edges_.find(k);
+    uint32_t m = (it == edges_.end()) ? 0u : static_cast<uint32_t>(it->second.size());
+    fwrite(&m, sizeof(uint32_t), 1, f);
+    if (m) {
+      for (Key64 ek : it->second) {
+        uint64_t ek64 = ek;
+        fwrite(&ek64, sizeof(uint64_t), 1, f);
+      }
+    }
+  }
+  fclose(f);
+}
+
+void Solver::clear_cache() {
+  cache_.clear();
+  edges_.clear();
+  top_moves_.clear();
+  top_move_plies_.clear();
+  top_move_wins_.clear();
 }
 
 }

@@ -1,4 +1,7 @@
 C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/collapsi_core.dir
 C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/collapsi_cpp.dir
+C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/gen_positions.dir
+C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/solve_norm_db.dir
+C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/list_derivations.dir
 C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/ALL_BUILD.dir
 C:/Woodchop/collapsi-deploy/Collapsi/cpp/build/CMakeFiles/ZERO_CHECK.dir
