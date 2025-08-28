@@ -22,3 +22,21 @@ collapsi.db
 node_modules/
 LLM.md
 
+# C++ build artifacts
+cpp/build/
+cpp/build-*/
+cpp/**/*.obj
+cpp/**/*.lib
+cpp/**/*.exe
+
+# Ninja build dir
+cpp/build-ninja/
+
+# Data backups and generated trees
+data/*.bak
+cpp/data/trees/
+data/trees/
+
+# Logs
+logs/
+

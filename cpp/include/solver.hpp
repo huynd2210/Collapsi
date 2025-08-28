@@ -21,6 +21,7 @@ public:
   void set_capture_edges(bool enabled) { capture_edges_ = enabled; }
   void clear_cache();
   void set_collect_root_metrics(bool enabled) { collect_root_metrics_ = enabled; }
+  void dump_tree_binary_to_vector(std::vector<uint8_t>& out) const;
 
 private:
   std::unordered_map<Key64, Answer, Key64Hasher> cache_;
