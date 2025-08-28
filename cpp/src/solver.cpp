@@ -220,6 +220,39 @@ void Solver::dump_tree_binary(const std::string& path, Key64 rootKey) const {
   fclose(f);
 }
 
+void Solver::dump_tree_binary_to_vector(std::vector<uint8_t>& out) const {
+  std::unordered_map<Key64, int, Key64Hasher> index;
+  std::vector<Key64> keys;
+  keys.reserve(cache_.size());
+  for (const auto& [k, _] : cache_) { index[k] = static_cast<int>(keys.size()); keys.push_back(k); }
+  auto append = [&](const void* ptr, size_t sz){
+    const uint8_t* p = static_cast<const uint8_t*>(ptr);
+    out.insert(out.end(), p, p + sz);
+  };
+  uint64_t n = static_cast<uint64_t>(keys.size());
+  append(&n, sizeof(uint64_t));
+  for (Key64 k : keys) {
+    const Answer& a = cache_.at(k);
+    uint64_t key64 = k;
+    uint8_t win = a.win ? 1 : 0;
+    uint8_t best = a.best_move;
+    uint16_t pl = a.plies;
+    append(&key64, sizeof(uint64_t));
+    append(&win, sizeof(uint8_t));
+    append(&best, sizeof(uint8_t));
+    append(&pl, sizeof(uint16_t));
+    auto it = edges_.find(k);
+    uint32_t m = (it == edges_.end()) ? 0u : static_cast<uint32_t>(it->second.size());
+    append(&m, sizeof(uint32_t));
+    if (m) {
+      for (Key64 ek : it->second) {
+        uint64_t ek64 = ek;
+        append(&ek64, sizeof(uint64_t));
+      }
+    }
+  }
+}
+
 void Solver::clear_cache() {
   cache_.clear();
   edges_.clear();
