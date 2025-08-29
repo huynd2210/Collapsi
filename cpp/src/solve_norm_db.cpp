@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -46,6 +47,16 @@ struct KeyTurnHash {
 };
 
 // duplicate, keep single definition above
+
+static std::string format_hms(long long ms) {
+  long long total_s = ms / 1000;
+  long long h = total_s / 3600;
+  long long m = (total_s % 3600) / 60;
+  long long s = total_s % 60;
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%02lld:%02lld:%02lld", h, m, s);
+  return std::string(buf);
+}
 
 static int dedup_database(const fs::path& dbPath) {
   const uint64_t recSize = static_cast<uint64_t>(sizeof(Record));
@@ -254,12 +265,23 @@ int main(int argc, char** argv) {
             if (buf.size() >= batch) {
               std::ofstream f(out, std::ios::binary | std::ios::app);
               f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size() * sizeof(Record)));
+              f.flush();
               buf.clear();
               auto t1 = std::chrono::high_resolution_clock::now();
               auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
               ++flushed;
               long long made = produced;
-              std::cout << "flushes=" << flushed << " produced=" << made << " elapsed_ms=" << ms << " rate_per_s=" << (ms > 0 ? (made * 1000.0 / ms) : 0.0) << "\n";
+              double rate = (ms > 0 ? (made * 1000.0 / ms) : 0.0);
+              double pct = (limit > 0 ? (100.0 * made / limit) : 0.0);
+              double eta_s = (rate > 0.0 && limit > 0 ? (limit - made) / rate : -1.0);
+              long long eta_ms = (eta_s >= 0 ? static_cast<long long>(eta_s * 1000.0) : -1);
+              std::cout << "flush flushes=" << flushed
+                        << " produced=" << made
+                        << " elapsed=" << format_hms(ms)
+                        << " rate_per_s=" << rate
+                        << " pct=" << pct
+                        << (eta_ms >= 0 ? (std::string(" eta=") + format_hms(eta_ms)) : std::string(""))
+                        << "\n";
             }
             // periodic progress
             auto now = std::chrono::high_resolution_clock::now();
@@ -269,7 +291,14 @@ int main(int argc, char** argv) {
               long long made = produced;
               double rate = (msTotal > 0 ? (made * 1000.0 / msTotal) : 0.0);
               double pct = (limit > 0 ? (100.0 * made / limit) : 0.0);
-              std::cout << "progress produced=" << made << " (" << pct << "%) elapsed_ms=" << msTotal << " rate_per_s=" << rate << " flushes=" << flushed << "\n";
+              double eta_s = (rate > 0.0 && limit > 0 ? (limit - made) / rate : -1.0);
+              long long eta_ms = (eta_s >= 0 ? static_cast<long long>(eta_s * 1000.0) : -1);
+              std::cout << "progress produced=" << made
+                        << " (" << pct << "%)"
+                        << " elapsed=" << format_hms(msTotal)
+                        << " rate_per_s=" << rate
+                        << (eta_ms >= 0 ? (std::string(" eta=") + format_hms(eta_ms)) : std::string(""))
+                        << " flushes=" << flushed << "\n";
               last = now;
             }
             if (limit > 0 && produced >= limit) {
@@ -280,7 +309,8 @@ int main(int argc, char** argv) {
               auto t1 = std::chrono::high_resolution_clock::now();
               auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
               long long made = produced;
-              std::cout << "DONE produced=" << made << " out=" << fs::absolute(out).string() << " elapsed_ms=" << ms << "\n";
+              double rate = (ms > 0 ? (made * 1000.0 / ms) : 0.0);
+              std::cout << "DONE produced=" << made << " out=" << fs::absolute(out).string() << " elapsed=" << format_hms(ms) << " rate_per_s=" << rate << "\n";
               return 0;
             }
           }
@@ -291,11 +321,13 @@ int main(int argc, char** argv) {
   if (!buf.empty()) {
     std::ofstream f(out, std::ios::binary | std::ios::app);
     f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size() * sizeof(Record)));
+    f.flush();
   }
   auto t1 = std::chrono::high_resolution_clock::now();
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-  long long made = produced - static_cast<long long>(existingCount);
-  std::cout << "DONE produced=" << made << " out=" << fs::absolute(out).string() << " elapsed_ms=" << ms << "\n";
+  long long made = produced;
+  double rate = (ms > 0 ? (made * 1000.0 / ms) : 0.0);
+  std::cout << "DONE produced=" << made << " out=" << fs::absolute(out).string() << " elapsed=" << format_hms(ms) << " rate_per_s=" << rate << "\n";
   return 0;
 }
 
