@@ -8,6 +8,7 @@
 #include <tuple>
 #include <vector>
 #include <chrono>
+#include <unordered_set>
 
 #include "../include/bitboard.hpp"
 #include "../include/hash.hpp"
@@ -27,11 +28,124 @@ struct Record {
   uint8_t pad[4]; // pad to 16 bytes
 };
 
+struct KeyTurn {
+  uint64_t key;
+  uint8_t turn;
+  bool operator==(const KeyTurn& other) const noexcept { return key == other.key && turn == other.turn; }
+};
+
+struct KeyTurnHash {
+  size_t operator()(const KeyTurn& kt) const noexcept {
+    uint64_t x = kt.key ^ (static_cast<uint64_t>(kt.turn) * 0x9e3779b97f4a7c15ULL);
+    // SplitMix64
+    x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27; x *= 0x94d049bb133111ebULL;
+    x ^= x >> 31;
+    return static_cast<size_t>(x);
+  }
+};
+
+// duplicate, keep single definition above
+
+static int dedup_database(const fs::path& dbPath) {
+  const uint64_t recSize = static_cast<uint64_t>(sizeof(Record));
+  if (!fs::exists(dbPath)) {
+    std::cerr << "dedup: missing file: " << dbPath.string() << "\n";
+    return 1;
+  }
+  fs::path tmpPath = dbPath; tmpPath += ".dedup";
+  fs::path bakPath = dbPath; bakPath += ".bak";
+  std::unordered_set<KeyTurn, KeyTurnHash> seen;
+  std::ifstream in(dbPath, std::ios::binary);
+  std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
+  if (!in.good() || !out.good()) {
+    std::cerr << "dedup: cannot open files\n";
+    return 2;
+  }
+  uint64_t read = 0, written = 0, dups = 0;
+  while (true) {
+    Record r{};
+    if (!in.read(reinterpret_cast<char*>(&r), sizeof(r))) break;
+    ++read;
+    KeyTurn kt{r.key, r.turn};
+    if (!seen.insert(kt).second) { ++dups; continue; }
+    out.write(reinterpret_cast<const char*>(&r), sizeof(r));
+    ++written;
+  }
+  in.close(); out.close();
+  std::error_code ec;
+  fs::rename(dbPath, bakPath, ec);
+  if (ec) {
+    std::cerr << "dedup: rename to .bak failed: " << ec.message() << "\n";
+    return 3;
+  }
+  fs::rename(tmpPath, dbPath, ec);
+  if (ec) {
+    std::cerr << "dedup: rename dedup -> db failed: " << ec.message() << "\n";
+    return 4;
+  }
+  std::cout << "dedup DONE read=" << read << " wrote=" << written << " duplicates=" << dups
+            << " out=" << fs::absolute(dbPath).string() << " bak=" << fs::absolute(bakPath).string() << "\n";
+  return 0;
+}
+
+static uint64_t load_seen_from_db(const fs::path& dbPath, std::unordered_set<KeyTurn, KeyTurnHash>& seen) {
+  std::ifstream f(dbPath, std::ios::binary);
+  if (!f.good()) return 0;
+  uint64_t loaded = 0;
+  while (true) {
+    Record r{};
+    if (!f.read(reinterpret_cast<char*>(&r), sizeof(r))) break;
+    seen.insert(KeyTurn{r.key, r.turn});
+    ++loaded;
+  }
+  return loaded;
+}
+
+static uint64_t load_seen_from_index(const fs::path& idxPath, std::unordered_set<KeyTurn, KeyTurnHash>& seen) {
+  std::ifstream f(idxPath, std::ios::binary);
+  if (!f.good()) return 0;
+  uint64_t loaded = 0;
+  while (true) {
+    KeyTurn kt{0, 0};
+    if (!f.read(reinterpret_cast<char*>(&kt.key), sizeof(uint64_t))) break;
+    if (!f.read(reinterpret_cast<char*>(&kt.turn), sizeof(uint8_t))) break;
+    seen.insert(kt);
+    ++loaded;
+  }
+  return loaded;
+}
+
+static void append_seen_index(const fs::path& idxPath, const std::vector<KeyTurn>& newSeen) {
+  if (newSeen.empty()) return;
+  std::ofstream f(idxPath, std::ios::binary | std::ios::app);
+  for (const auto& kt : newSeen) {
+    f.write(reinterpret_cast<const char*>(&kt.key), sizeof(uint64_t));
+    f.write(reinterpret_cast<const char*>(&kt.turn), sizeof(uint8_t));
+  }
+}
+
+static uint64_t truncate_to_multiple_and_count(const fs::path& path, uint64_t recordSize) {
+  std::error_code ec;
+  if (!fs::exists(path, ec)) return 0;
+  uint64_t size = static_cast<uint64_t>(fs::file_size(path, ec));
+  if (ec || recordSize == 0) return 0;
+  uint64_t remainder = size % recordSize;
+  if (remainder != 0) {
+    uint64_t newSize = size - remainder;
+    fs::resize_file(path, newSize, ec);
+  }
+  std::error_code ec2;
+  uint64_t finalSize = static_cast<uint64_t>(fs::file_size(path, ec2));
+  return (recordSize ? (finalSize / recordSize) : 0);
+}
+
 int main(int argc, char** argv) {
   // Args: [--out FILE] [--stride N] [--offset K] [--limit M] [--batch B] [--dumpdir DIR]
   fs::path exeDir = fs::absolute(fs::path(argv[0])).parent_path();
   fs::path out = exeDir / ".." / ".." / ".." / "data" / "solved_norm.db";
   fs::path dumpdir; // empty means no dumps
+  std::vector<fs::path> seenPaths; // additional DBs to preload seen from
   int stride = 1;
   int offset = 0;
   long long limit = 10'000'000; // default 10M
@@ -44,25 +158,41 @@ int main(int argc, char** argv) {
     else if (a == "--limit" && i + 1 < argc) { limit = std::atoll(argv[++i]); }
     else if (a == "--batch" && i + 1 < argc) { batch = static_cast<size_t>(std::atoll(argv[++i])); }
     else if (a == "--dumpdir" && i + 1 < argc) { dumpdir = fs::path(argv[++i]); }
+    else if (a == "--seen" && i + 1 < argc) { seenPaths.push_back(fs::path(argv[++i])); }
   }
+  if (argc >= 2 && std::string(argv[1]) == "--dedup") {
+    fs::path target = (argc >= 3 ? fs::path(argv[2]) : out);
+    target = fs::absolute(target);
+    return dedup_database(target);
+  }
+  // Canonicalize output path to avoid accidental writes to a different DB due to CWD
+  out = fs::absolute(out);
   fs::create_directories(out.parent_path());
   if (!dumpdir.empty()) fs::create_directories(dumpdir);
 
   auto t0 = std::chrono::high_resolution_clock::now();
   auto last = t0;
   std::vector<Record> buf; buf.reserve(batch);
-  long long produced = 0;
+  const uint64_t recSize = static_cast<uint64_t>(sizeof(Record));
+  const uint64_t existingCount = truncate_to_multiple_and_count(out, recSize);
+  std::cout << "resume existing_records=" << existingCount << "\n";
+  std::unordered_set<KeyTurn, KeyTurnHash> seen;
+  uint64_t preloaded = 0;
+  preloaded += load_seen_from_db(out, seen);
+  for (const auto& sp : seenPaths) {
+    preloaded += load_seen_from_db(fs::absolute(sp), seen);
+  }
+  std::cout << "loaded_seen=" << preloaded << "\n";
+  long long produced = 0; // number of newly written records this run
   long long flushed = 0;
-  int j2count = 0;
 
   Solver solver;
   solver.set_capture_edges(!dumpdir.empty()); // capture edges only if dumping trees
+  solver.set_collect_root_metrics(true);
 
   // Enumerate canonical normalized grids: X at 0; O at any 1..15; choose positions for A,2,3; remaining are 4
   for (int oIdx = 1; oIdx < 16; ++oIdx) {
-    if ((j2count % stride) != offset) { ++j2count; continue; }
-    ++j2count;
-    std::cout << "start_oIdx=" << oIdx << "/15 produced=" << produced << "\n";
+    std::cout << "oIdx=" << oIdx << "/15 produced=" << produced << "\n";
     for (int a0 = 0; a0 < 16; ++a0)
     for (int a1 = a0 + 1; a1 < 16; ++a1)
     for (int a2 = a1 + 1; a2 < 16; ++a2)
@@ -94,9 +224,16 @@ int main(int argc, char** argv) {
           oMask = static_cast<bb_t>(1) << oIdx;
           // Solve both turns normalized (turn=0,1)
           for (uint8_t turn = 0; turn <= 1; ++turn) {
+            Key64 key = hash_state(aMask, twoMask, threeMask, fourMask, xMask, oMask, collMask, turn);
+            if (stride > 1 && (key % static_cast<uint64_t>(stride)) != static_cast<uint64_t>(offset)) {
+              continue; // key-based sharding to avoid cross-shard duplicates
+            }
+            KeyTurn kt{key, turn};
+            if (seen.find(kt) != seen.end()) {
+              continue; // already have this record
+            }
             BitState s{aMask, twoMask, threeMask, fourMask, xMask, oMask, collMask, turn};
             Answer ans = solver.solve(s);
-            Key64 key = hash_state(aMask, twoMask, threeMask, fourMask, xMask, oMask, collMask, turn);
             Record r{};
             r.key = key;
             r.turn = turn;
@@ -105,6 +242,7 @@ int main(int argc, char** argv) {
             r.plies = ans.plies;
             buf.push_back(r);
             ++produced;
+            seen.insert(kt);
             // Optionally dump full solved tree for this root, then clear caches
             if (!dumpdir.empty()) {
               char name[64];
@@ -120,16 +258,18 @@ int main(int argc, char** argv) {
               auto t1 = std::chrono::high_resolution_clock::now();
               auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
               ++flushed;
-              std::cout << "flushes=" << flushed << " produced=" << produced << " elapsed_ms=" << ms << " rate_per_s=" << (ms > 0 ? (produced * 1000.0 / ms) : 0.0) << "\n";
+              long long made = produced;
+              std::cout << "flushes=" << flushed << " produced=" << made << " elapsed_ms=" << ms << " rate_per_s=" << (ms > 0 ? (made * 1000.0 / ms) : 0.0) << "\n";
             }
             // periodic progress
             auto now = std::chrono::high_resolution_clock::now();
             auto since = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
             if (since >= 2000) {
               auto msTotal = std::chrono::duration_cast<std::chrono::milliseconds>(now - t0).count();
-              double rate = (msTotal > 0 ? (produced * 1000.0 / msTotal) : 0.0);
-              double pct = (limit > 0 ? (100.0 * produced / limit) : 0.0);
-              std::cout << "progress produced=" << produced << " (" << pct << "%) elapsed_ms=" << msTotal << " rate_per_s=" << rate << " flushes=" << flushed << "\n";
+              long long made = produced;
+              double rate = (msTotal > 0 ? (made * 1000.0 / msTotal) : 0.0);
+              double pct = (limit > 0 ? (100.0 * made / limit) : 0.0);
+              std::cout << "progress produced=" << made << " (" << pct << "%) elapsed_ms=" << msTotal << " rate_per_s=" << rate << " flushes=" << flushed << "\n";
               last = now;
             }
             if (limit > 0 && produced >= limit) {
@@ -139,7 +279,8 @@ int main(int argc, char** argv) {
               }
               auto t1 = std::chrono::high_resolution_clock::now();
               auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-              std::cout << "DONE produced=" << produced << " out=" << fs::absolute(out).string() << " elapsed_ms=" << ms << "\n";
+              long long made = produced;
+              std::cout << "DONE produced=" << made << " out=" << fs::absolute(out).string() << " elapsed_ms=" << ms << "\n";
               return 0;
             }
           }
@@ -153,7 +294,8 @@ int main(int argc, char** argv) {
   }
   auto t1 = std::chrono::high_resolution_clock::now();
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-  std::cout << "DONE produced=" << produced << " out=" << fs::absolute(out).string() << " elapsed_ms=" << ms << "\n";
+  long long made = produced - static_cast<long long>(existingCount);
+  std::cout << "DONE produced=" << made << " out=" << fs::absolute(out).string() << " elapsed_ms=" << ms << "\n";
   return 0;
 }
 
