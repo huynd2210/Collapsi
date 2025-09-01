@@ -10,6 +10,8 @@
 #include <vector>
 #include <chrono>
 #include <unordered_set>
+#include <limits>
+#include <cmath>
 
 #include "../include/bitboard.hpp"
 #include "../include/hash.hpp"
@@ -56,6 +58,59 @@ static std::string format_hms(long long ms) {
   char buf[32];
   std::snprintf(buf, sizeof(buf), "%02lld:%02lld:%02lld", h, m, s);
   return std::string(buf);
+}
+
+struct BatchMetrics {
+  size_t count;
+  size_t zero_keys;
+  size_t bad_move;
+  size_t plies_anom;
+  size_t wins1;
+  size_t wins0;
+  size_t turn0;
+  size_t turn1;
+  long long plies_sum;
+  uint16_t min_plies;
+  uint16_t max_plies;
+};
+
+static inline bool best_ok(uint8_t b) {
+  if (b == 0xFF) return true;
+  uint8_t f = (b >> 4) & 0x0F;
+  uint8_t t = b & 0x0F;
+  return f < 16 && t < 16;
+}
+
+static BatchMetrics analyze_batch(const std::vector<Record>& v) {
+  BatchMetrics m{};
+  m.count = v.size();
+  m.zero_keys = 0;
+  m.bad_move = 0;
+  m.plies_anom = 0;
+  m.wins1 = 0;
+  m.wins0 = 0;
+  m.turn0 = 0;
+  m.turn1 = 0;
+  m.plies_sum = 0;
+  m.min_plies = std::numeric_limits<uint16_t>::max();
+  m.max_plies = 0;
+  for (const auto& r : v) {
+    if (r.key == 0) ++m.zero_keys;
+    if (!best_ok(r.best)) ++m.bad_move;
+    if (!(r.plies <= 50)) ++m.plies_anom; // 0..50 expected for 4x4
+    if (r.win == 1 && r.plies < 1) ++m.plies_anom;
+    if (r.win == 0 && r.plies < 0) ++m.plies_anom; // defensive; plies is unsigned anyway
+    if (r.turn == 0) ++m.turn0; else if (r.turn == 1) ++m.turn1;
+    if (r.win == 1) ++m.wins1; else if (r.win == 0) ++m.wins0;
+    m.plies_sum += r.plies;
+    if (r.plies < m.min_plies) m.min_plies = r.plies;
+    if (r.plies > m.max_plies) m.max_plies = r.plies;
+  }
+  if (m.count == 0) {
+    m.min_plies = 0;
+    m.max_plies = 0;
+  }
+  return m;
 }
 
 static int dedup_database(const fs::path& dbPath) {
@@ -196,6 +251,8 @@ int main(int argc, char** argv) {
   std::cout << "loaded_seen=" << preloaded << "\n";
   long long produced = 0; // number of newly written records this run
   long long flushed = 0;
+  long long cum_wins1 = 0;      // cumulative wins across flushed batches
+  long long cum_plies_sum = 0;  // cumulative plies sum across flushed batches
 
   Solver solver;
   solver.set_capture_edges(!dumpdir.empty()); // capture edges only if dumping trees
@@ -263,9 +320,24 @@ int main(int argc, char** argv) {
             }
             solver.clear_cache();
             if (buf.size() >= batch) {
+              // Analyze current batch before flushing to disk
+              BatchMetrics bm = analyze_batch(buf);
+              long long prior = produced - static_cast<long long>(bm.count);
+              double baseline_win = (prior > 0 ? (static_cast<double>(cum_wins1) / static_cast<double>(prior)) : -1.0);
+              double batch_win = (bm.count > 0 ? (static_cast<double>(bm.wins1) / static_cast<double>(bm.count)) : 0.0);
+              double drift = (baseline_win >= 0.0 ? std::fabs(batch_win - baseline_win) : 0.0);
+              bool anomaly = (bm.zero_keys > 0) || (bm.bad_move > 0) || (bm.plies_anom > 0) || ((prior >= 10000) && (drift > 0.2));
+
+              // Flush to disk
               std::ofstream f(out, std::ios::binary | std::ios::app);
               f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size() * sizeof(Record)));
               f.flush();
+
+              // Update cumulative stats
+              cum_wins1 += static_cast<long long>(bm.wins1);
+              cum_plies_sum += static_cast<long long>(bm.plies_sum);
+
+              // Clear buffer and report
               buf.clear();
               auto t1 = std::chrono::high_resolution_clock::now();
               auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
@@ -275,12 +347,28 @@ int main(int argc, char** argv) {
               double pct = (limit > 0 ? (100.0 * made / limit) : 0.0);
               double eta_s = (rate > 0.0 && limit > 0 ? (limit - made) / rate : -1.0);
               long long eta_ms = (eta_s >= 0 ? static_cast<long long>(eta_s * 1000.0) : -1);
+
               std::cout << "flush flushes=" << flushed
                         << " produced=" << made
                         << " elapsed=" << format_hms(ms)
                         << " rate_per_s=" << rate
                         << " pct=" << pct
                         << (eta_ms >= 0 ? (std::string(" eta=") + format_hms(eta_ms)) : std::string(""))
+                        << "\n";
+
+              std::cout << "health produced=" << made
+                        << " batch_n=" << bm.count
+                        << " win_rate=" << batch_win
+                        << " avg_plies=" << (bm.count ? (static_cast<double>(bm.plies_sum) / static_cast<double>(bm.count)) : 0.0)
+                        << " min_plies=" << bm.min_plies
+                        << " max_plies=" << bm.max_plies
+                        << " t0=" << bm.turn0
+                        << " t1=" << bm.turn1
+                        << " zero_keys=" << bm.zero_keys
+                        << " bad_move=" << bm.bad_move
+                        << " plies_anom=" << bm.plies_anom
+                        << " drift_win_rate=" << drift
+                        << " status=" << (anomaly ? "ANOMALY" : "OK")
                         << "\n";
             }
             // periodic progress
@@ -303,8 +391,34 @@ int main(int argc, char** argv) {
             }
             if (limit > 0 && produced >= limit) {
               if (!buf.empty()) {
+                BatchMetrics bm = analyze_batch(buf);
+                long long prior = produced - static_cast<long long>(bm.count);
+                double baseline_win = (prior > 0 ? (static_cast<double>(cum_wins1) / static_cast<double>(prior)) : -1.0);
+                double batch_win = (bm.count > 0 ? (static_cast<double>(bm.wins1) / static_cast<double>(bm.count)) : 0.0);
+                double drift = (baseline_win >= 0.0 ? std::fabs(batch_win - baseline_win) : 0.0);
+                bool anomaly = (bm.zero_keys > 0) || (bm.bad_move > 0) || (bm.plies_anom > 0) || ((prior >= 10000) && (drift > 0.2));
+
                 std::ofstream f(out, std::ios::binary | std::ios::app);
                 f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size() * sizeof(Record)));
+
+                // Update cumulative stats for the final partial batch
+                cum_wins1 += static_cast<long long>(bm.wins1);
+                cum_plies_sum += static_cast<long long>(bm.plies_sum);
+
+                std::cout << "health produced=" << produced
+                          << " batch_n=" << bm.count
+                          << " win_rate=" << batch_win
+                          << " avg_plies=" << (bm.count ? (static_cast<double>(bm.plies_sum) / static_cast<double>(bm.count)) : 0.0)
+                          << " min_plies=" << bm.min_plies
+                          << " max_plies=" << bm.max_plies
+                          << " t0=" << bm.turn0
+                          << " t1=" << bm.turn1
+                          << " zero_keys=" << bm.zero_keys
+                          << " bad_move=" << bm.bad_move
+                          << " plies_anom=" << bm.plies_anom
+                          << " drift_win_rate=" << drift
+                          << " status=" << (anomaly ? "ANOMALY" : "OK")
+                          << "\n";
               }
               auto t1 = std::chrono::high_resolution_clock::now();
               auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
@@ -319,9 +433,34 @@ int main(int argc, char** argv) {
     }
   }
   if (!buf.empty()) {
+    BatchMetrics bm = analyze_batch(buf);
+    long long prior = produced - static_cast<long long>(bm.count);
+    double baseline_win = (prior > 0 ? (static_cast<double>(cum_wins1) / static_cast<double>(prior)) : -1.0);
+    double batch_win = (bm.count > 0 ? (static_cast<double>(bm.wins1) / static_cast<double>(bm.count)) : 0.0);
+    double drift = (baseline_win >= 0.0 ? std::fabs(batch_win - baseline_win) : 0.0);
+    bool anomaly = (bm.zero_keys > 0) || (bm.bad_move > 0) || (bm.plies_anom > 0) || ((prior >= 10000) && (drift > 0.2));
+
     std::ofstream f(out, std::ios::binary | std::ios::app);
     f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size() * sizeof(Record)));
     f.flush();
+
+    cum_wins1 += static_cast<long long>(bm.wins1);
+    cum_plies_sum += static_cast<long long>(bm.plies_sum);
+
+    std::cout << "health produced=" << produced
+              << " batch_n=" << bm.count
+              << " win_rate=" << batch_win
+              << " avg_plies=" << (bm.count ? (static_cast<double>(bm.plies_sum) / static_cast<double>(bm.count)) : 0.0)
+              << " min_plies=" << bm.min_plies
+              << " max_plies=" << bm.max_plies
+              << " t0=" << bm.turn0
+              << " t1=" << bm.turn1
+              << " zero_keys=" << bm.zero_keys
+              << " bad_move=" << bm.bad_move
+              << " plies_anom=" << bm.plies_anom
+              << " drift_win_rate=" << drift
+              << " status=" << (anomaly ? "ANOMALY" : "OK")
+              << "\n";
   }
   auto t1 = std::chrono::high_resolution_clock::now();
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();

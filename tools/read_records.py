@@ -65,7 +65,8 @@ def _score_solved_format(path: str, fmt: str, rec_size: int, max_samples: int = 
     Checks the first N records and counts how many have plausible fields:
       - turn in {0,1}
       - win in {0,1}
-      - best encodes from/to in [0,15] (always true for u8, but we consider it)
+      - best encodes from/to in [0,15] OR equals 0xFF
+      - plies plausibility on 4x4: 0 <= plies <= 50, and (win==1 => plies>=1)
     Returns ratio in [0,1].
     """
     try:
@@ -91,10 +92,15 @@ def _score_solved_format(path: str, fmt: str, rec_size: int, max_samples: int = 
                 valid = False
             if win not in (0, 1):
                 valid = False
-            # Optional plausibility check on 'best'
-            fidx = (best >> 4) & 0x0F
-            tidx = best & 0x0F
-            if not (0 <= fidx <= 15 and 0 <= tidx <= 15):
+            if best != 0xFF:
+                fidx = (best >> 4) & 0x0F
+                tidx = best & 0x0F
+                if not (0 <= fidx <= 15 and 0 <= tidx <= 15):
+                    valid = False
+            # plies plausibility
+            if not (0 <= plies <= 50):
+                valid = False
+            if win == 1 and plies < 1:
                 valid = False
             if valid:
                 hits += 1
@@ -106,34 +112,51 @@ def _score_solved_format(path: str, fmt: str, rec_size: int, max_samples: int = 
 def _detect_solved_record_format_from_path(path: str) -> Tuple[str, int]:
     """
     Auto-detect struct format by trying plausible layouts and scoring field plausibility.
-    Priority order prefers the canonical C++ struct definition observed in repo.
+    We compute the record size from struct.calcsize(fmt) to avoid hard-coded mismatches.
     Candidates:
-      - 17-byte: <QBBBH4x  (8 + 1 + 1 + 1 + 2 + 4 = 17)
-      - 16-byte: <QBBBH3x
-      - 24-byte: <QBBBH11x (alignment padding possibility)
+      - 18-byte (MSVC typical): <QBBBxH4x  (8 + 1 + 1 + 1 + 1 pad + 2 + 4 = 18)
+      - 17-byte (packed):       <QBBBH4x
+      - 16-byte (packed):       <QBBBH3x
+      - 25-byte (aligned):      <QBBBxH11x
     """
-    candidates: List[Tuple[str, int]] = [
-        ("<QBBBH4x", 17),
-        ("<QBBBH3x", 16),
-        ("<QBBBH11x", 24),
+    fmts: List[str] = [
+        # Most plausible for MSVC with 2-byte alignment before H and trailing pad to 24
+        "<QBBBxH10x",  # 8 + 1 + 1 + 1 + 1 + 2 + 10 = 24
+        # Older packed variant explicitly padding tail to reach 24
+        "<QBBBH11x",   # 8 + 1 + 1 + 1 + 2 + 11 = 24 (H at offset 11) — often wrong plies byte order
+        # Tight packed
+        "<QBBBH3x",    # 16
+        "<QBBBH4x",    # 17
+        # Alternative: pad before H then larger tail
+        "<QBBBxH11x",  # 25
+        "<QBBBxH4x",   # 18
     ]
     # Prefer divisible record sizes to avoid partial tail
-    size = os.path.getsize(path)
-    divisible = [(fmt, rs) for (fmt, rs) in candidates if size % rs == 0]
-    probe = divisible if divisible else candidates
-    best_fmt, best_rs, best_score = None, None, -1.0
+    fsize = os.path.getsize(path)
+    cand = []
+    for fmt in fmts:
+        try:
+            sz = struct.calcsize(fmt)
+        except Exception:
+            continue
+        if sz > 0 and fsize % sz == 0:
+            cand.append((fmt, sz))
+    probe = cand if cand else [(fmt, struct.calcsize(fmt)) for fmt in fmts]
+    best_fmt, best_sz, best_score = None, None, -1.0
     for fmt, rs in probe:
         score = _score_solved_format(path, fmt, rs)
         if score > best_score:
-            best_fmt, best_rs, best_score = fmt, rs, score
+            best_fmt, best_sz, best_score = fmt, rs, score
     if best_fmt is None:
-        # Fallback to canonical 17 bytes
-        return "<QBBBH4x", 17
-    return best_fmt, best_rs
+        # Fallback to MSVC-typical 18 bytes
+        return "<QBBBxH4x", struct.calcsize("<QBBBxH4x")
+    return best_fmt, best_sz
 
 
 def iter_solved_records(path: str, start: int = 0, limit: Optional[int] = None) -> Iterator[SolvedRecord]:
     fmt, rec_size = _detect_solved_record_format_from_path(path)
+    # Ensure rec_size exactly matches the struct format size
+    rec_size = struct.calcsize(fmt)
     unpack = struct.Struct(fmt).unpack_from
 
     with open(path, "rb") as f:
@@ -145,7 +168,12 @@ def iter_solved_records(path: str, start: int = 0, limit: Optional[int] = None) 
         # Read in reasonable chunks, aligned to record size
         chunk_bytes = max(64 * 1024, rec_size * 1024)
         while remaining > 0:
-            data = f.read(min(chunk_bytes, int(remaining) * rec_size))
+            to_read = min(chunk_bytes, int(remaining) * rec_size)
+            # Round down to multiple of rec_size to avoid trailing partial record
+            to_read = (to_read // rec_size) * rec_size
+            if to_read <= 0:
+                break
+            data = f.read(to_read)
             if not data:
                 break
             for off in range(0, len(data), rec_size):
