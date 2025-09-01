@@ -304,15 +304,47 @@ def api_ai() -> Any:
     req_id = str(uuid.uuid4())
     state = json_to_state(body['state'])
     game_id = body.get('gameId')
+
+    # First attempt: perfect solver winning move (returns None if no forced win)
     move = ai_pick_move(state, db_path)
+
+    # Legal moves for fallback strategies
     legal = legal_moves(state)
     if not legal:
         _log("ai_no_moves", requestId=req_id, state=_state_log_fields(state), winner=state.other_player())
         return jsonify({'ok': True, 'state': state_to_json(state), 'legalMoves': [], 'winner': state.other_player(), 'gameId': game_id})
+
+    # If no forced win, choose best available using detailed per-move outcomes:
+    # - Prefer any winning move with minimal plies
+    # - Otherwise, choose the losing move that maximizes plies (delay)
     if move is None:
-        # If no winning move is found, use a heuristic to pick the best available move.
-        move = legal[0]
+        detailed = solve_moves_cpp(state)
+        chosen = None
+        if detailed:
+            wins = [it for it in detailed if bool(it.get('win'))]
+            def pl_val_min(it):
+                pl = it.get('plies')
+                return pl if isinstance(pl, int) else (10**9)
+            def pl_val_max(it):
+                pl = it.get('plies')
+                return pl if isinstance(pl, int) else -1
+            if wins:
+                chosen = min(wins, key=pl_val_min)
+            else:
+                chosen = max(detailed, key=pl_val_max)
+            mv = chosen.get('move') if isinstance(chosen, dict) else None
+            if isinstance(mv, list) and len(mv) == 2:
+                move = (int(mv[0]), int(mv[1]))
+        # Ultimate fallback: pick first legal move
+        if move is None:
+            move = tuple(legal[0])
+
+    # Safety: ensure selected move is legal
+    if move not in legal:
+        move = tuple(legal[0])
+
     path = find_example_path(state, move)
+
     # Append AI move with plies-left before applying
     try:
         from game import solve_with_cache as _solve
@@ -321,21 +353,24 @@ def api_ai() -> Any:
             _append_move(game_id, move, res.plies)
     except Exception:
         pass
+
     next_state = apply_move(state, move)
     solve_with_cache(next_state, db_path)
+
     try:
         from game import solve_with_cache as _solve
         # Log start and next state outcomes to detect suspicious contradictions
         start = _solve(state, db_path)
         after = _solve(next_state, db_path)
-        _log("ai_move", requestId=req_id, 
-             fromState=_state_log_fields(state), toState=_state_log_fields(next_state), 
+        _log("ai_move", requestId=req_id,
+             fromState=_state_log_fields(state), toState=_state_log_fields(next_state),
              move={'r': move[0], 'c': move[1]}, startWin=start.win, startPlies=start.plies, nextHumanWin=after.win, nextPlies=after.plies)
         if start.win and after.win:
-            _log("anomaly_win_flip", requestId=req_id, note="AI had win but moved into human win", 
+            _log("anomaly_win_flip", requestId=req_id, note="AI had win but moved into human win",
                  fromState=_state_log_fields(state), toState=_state_log_fields(next_state))
     except Exception:
         pass
+
     # If game concluded (opponent has no moves), log summary line and clear game session
     try:
         if game_id:
@@ -345,6 +380,7 @@ def api_ai() -> Any:
                 _log_summary(game_id, next_state, actual_winner)
     except Exception:
         pass
+
     return jsonify({
         'ok': True,
         'move': move,

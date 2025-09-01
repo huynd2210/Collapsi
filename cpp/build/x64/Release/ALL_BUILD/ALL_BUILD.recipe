@@ -11,6 +11,9 @@
       <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\Release\gen_positions.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
+      <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\Release\list_derivations.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
       <FullPath>C:\Woodchop\collapsi-deploy\Collapsi\cpp\build\Release\solve_norm_db.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
