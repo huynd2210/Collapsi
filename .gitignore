@@ -16,7 +16,7 @@ Thumbs.db
 
 .vscode/
 .idea/
-
+*.db
 collapsi.db
 
 node_modules/
