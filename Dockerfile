@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 WORKDIR /src
 COPY . /src
 # Configure and build the solver
-RUN cmake -G Ninja -S Collapsi/cpp -B /src/cpp-build -DCMAKE_BUILD_TYPE=Release \
+RUN cmake -G Ninja -S cpp -B /src/cpp-build -DCMAKE_BUILD_TYPE=Release \
  && cmake --build /src/cpp-build --parallel
 
 # --- Runtime stage: python app + compiled solver ---
