@@ -15,25 +15,29 @@ FROM python:3.11-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Copy application sources
-COPY Collapsi /app/Collapsi
+# Copy application sources (entire repo) to support both repo layouts:
+# - app.py at repo root
+# - or Collapsi/app.py under a subdir
+COPY . /app
 
-# Copy the compiled solver binary from the builder
-COPY --from=builder /src/cpp-build/collapsi_cpp /app/Collapsi/collapsi_cpp
-RUN chmod +x /app/Collapsi/collapsi_cpp
+# Copy the compiled solver binary from the builder to a fixed path
+COPY --from=builder /src/cpp-build/collapsi_cpp /app/collapsi_cpp
+RUN chmod +x /app/collapsi_cpp
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r /app/Collapsi/requirements.txt
+# Install Python dependencies (support both requirements.txt locations)
+RUN if [ -f /app/requirements.txt ]; then pip install --no-cache-dir -r /app/requirements.txt; \
+    elif [ -f /app/Collapsi/requirements.txt ]; then pip install --no-cache-dir -r /app/Collapsi/requirements.txt; \
+    else echo "warning: requirements.txt not found"; fi
 
 # Environment for strict solver usage in container
-ENV COLLAPSI_CPP_EXE=/app/Collapsi/collapsi_cpp \
+ENV COLLAPSI_CPP_EXE=/app/collapsi_cpp \
     COLLAPSI_REQUIRE_CPP=true \
     COLLAPSI_DEBUG=1 \
     COLLAPSI_DB=/tmp/collapsi.db
 
-# Run from app dir where app.py lives
-WORKDIR /app/Collapsi
+# Work from /app and dynamically choose where app.py lives at run time
+WORKDIR /app
 EXPOSE 5000
 
-# Use sh -c so $PORT expands at runtime on Render
-CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-5000} app:app"]
+# If app.py exists at /app, run from there; otherwise try /app/Collapsi
+CMD ["sh", "-c", "[ -f /app/app.py ] && cd /app || cd /app/Collapsi; exec gunicorn -b 0.0.0.0:${PORT:-5000} app:app"]
