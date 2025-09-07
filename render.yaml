@@ -5,7 +5,7 @@ services:
     rootDir: .
     plan: free
     autoDeploy: true
-    dockerfilePath: Collapsi/Dockerfile
+    dockerfilePath: Dockerfile
     healthCheckPath: /
     envVars:
       - key: COLLAPSI_DB
