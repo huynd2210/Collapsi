@@ -96,29 +96,22 @@ Answer Solver::solve_rec(const BitState& state, int depth) {
       Key64 childKey = hash_state(nextState.bbA, nextState.bb2, nextState.bb3, nextState.bb4, nextState.bbX, nextState.bbO, nextState.bbCollapsed, nextState.turn);
       edges_[stateKey].push_back(childKey);
     }
+    // Compute plies for this move for UI and selection
+    int pl_for_move;
     if (allOpponentRepliesLeadToOurWin) {
-      // Short-circuit: first winning line is enough
-      int pl = (worstWinPlies == 0 ? 1 : worstWinPlies);
-      if (depth == 0) {
-        ui_moves.push_back(moveEntry.move);
-        ui_plies.push_back(pl);
-        ui_wins.push_back(1);
-        top_moves_.swap(ui_moves);
-        top_move_plies_.swap(ui_plies);
-        top_move_wins_.swap(ui_wins);
-      }
-      Answer answer{true, moveEntry.move, static_cast<uint16_t>(pl)};
-      cache_.emplace(stateKey, answer);
-      return answer;
+      // Opponent delays, so use worst (max) reply distance; immediate terminal becomes 1 ply
+      pl_for_move = (worstWinPlies == 0 ? 1 : worstWinPlies);
+      // Track best winning move by minimizing worst-case plies
+      if (pl_for_move < bestWinPlies) { bestWinPlies = pl_for_move; bestWinMove = moveEntry.move; }
     } else {
+      // Losing move: opponent accelerates our loss; ensure finite baseline
       if (bestLossPliesForThis == (1 << 29)) bestLossPliesForThis = 2; // at least 1 move each
       if (bestLossPliesForThis > bestLossPlies) { bestLossPlies = bestLossPliesForThis; bestLossMove = moveEntry.move; }
+      pl_for_move = bestLossPliesForThis;
     }
     if (depth == 0) {
-      int pl = allOpponentRepliesLeadToOurWin ? worstWinPlies : bestLossPliesForThis;
-      if (!allOpponentRepliesLeadToOurWin && pl == (1 << 29)) pl = 2;
       ui_moves.push_back(moveEntry.move);
-      ui_plies.push_back(pl);
+      ui_plies.push_back(pl_for_move);
       ui_wins.push_back(static_cast<uint8_t>(allOpponentRepliesLeadToOurWin ? 1 : 0));
     }
   }

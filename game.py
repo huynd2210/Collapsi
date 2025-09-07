@@ -572,81 +572,50 @@ def _decode_best_move_byte(val: int) -> Optional[Coord]:
 
 def solve_with_cache(state: GameState, db_path: str, depth_cap: Optional[int] = None) -> SolveResult:
     """
-    Solve a game state using the C++ engine with lightweight SQLite caching.
-    - First checks SQLite by normalized key for (win, plies, best_move).
-    - If cached and plies present, returns immediately. If win==True but best_move is missing,
-      it still queries the CLI to obtain the concrete best destination for this raw state
-      (we do not persist best_move into DB because keys are normalized).
-    - On cache miss, runs the CLI and persists (win, plies) to SQLite.
+    Canonical solver: prefer native CLI for consistent plies semantics. Fall back to SQLite when CLI is unavailable.
+    - Always parse plies/best from CLI when possible and write (win, plies) to DB under the normalized key.
+    - Do not persist best_move in DB because the key is normalized (best depends on raw alignment).
     """
-    # 1) Try DB first (fast path)
+    # CLI-first for consistency
+    try:
+        arg = _state_to_cpp_arg(state)
+    except Exception:
+        return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
+    exe = _find_cpp_exe()
+    if exe:
+        try:
+            proc = subprocess.run([exe, '--state', arg], capture_output=True, text=True, check=False)
+            line = (proc.stdout or '').strip()
+            parts = line.split('|')
+            head = parts[0].strip().split()
+            if len(head) >= 3 and head[0] in ('0', '1'):
+                win = (head[0] == '1')
+                try:
+                    best_raw = int(head[1])
+                except Exception:
+                    best_raw = 255
+                best_coord = _decode_best_move_byte(best_raw)
+                try:
+                    plies = int(head[2])
+                except Exception:
+                    plies = None
+                # Persist normalized (win, plies) for caching
+                try:
+                    db_store_state(db_path, state, win=win, best_move=None, plies=plies)
+                except Exception:
+                    pass
+                return SolveResult(win=win, best_move=best_coord, proof_moves=None, plies=plies)
+        except Exception:
+            # Fall through to DB
+            pass
+
+    # Fallback: DB-only when CLI missing/unavailable
     try:
         key = _state_key(state)
         looked = db_lookup_state(db_path, key)
         if looked is not None:
             win_val, best_mv, plies_val = looked
-            # If DB says current side wins but best move is missing, retrieve concrete move via CLI for this raw state
-            if win_val and best_mv is None:
-                try:
-                    arg = _state_to_cpp_arg(state)
-                except Exception:
-                    return SolveResult(win=bool(win_val), best_move=None, proof_moves=None, plies=plies_val)
-                exe = _find_cpp_exe()
-                if exe:
-                    try:
-                        proc = subprocess.run([exe, '--state', arg], capture_output=True, text=True, check=False)
-                        line = (proc.stdout or '').strip()
-                        parts = line.split('|')
-                        head = parts[0].strip().split()
-                        if len(head) >= 3 and head[0] in ('0', '1'):
-                            try:
-                                best_raw = int(head[1])
-                            except Exception:
-                                best_raw = 255
-                            best_coord = _decode_best_move_byte(best_raw)
-                            return SolveResult(win=True, best_move=best_coord, proof_moves=None, plies=plies_val)
-                    except Exception:
-                        # Fall back to DB-only info
-                        return SolveResult(win=bool(win_val), best_move=None, proof_moves=None, plies=plies_val)
-            # Return DB info (best_mv is stored only if the same raw alignment was cached, usually None)
             return SolveResult(win=bool(win_val), best_move=best_mv, proof_moves=None, plies=plies_val)
-    except Exception:
-        # Ignore DB errors and fall back to CLI
-        pass
-
-    # 2) Cache miss -> Query CLI
-    try:
-        arg = _state_to_cpp_arg(state)
-    except Exception:
-        # Unsupported board
-        return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
-    exe = _find_cpp_exe()
-    if not exe:
-        # Without CLI, caller will see plies=None; UI should degrade to heuristic or DB fallback
-        return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
-    try:
-        proc = subprocess.run([exe, '--state', arg], capture_output=True, text=True, check=False)
-        line = (proc.stdout or '').strip()
-        # expected: "win best plies timeus | m:p:w ..." or without the trailing list
-        parts = line.split('|')
-        head = parts[0].strip().split()
-        if len(head) >= 3:
-            win = (head[0] == '1')
-            try:
-                best_raw = int(head[1])
-            except Exception:
-                best_raw = 255
-            best_coord = _decode_best_move_byte(best_raw)
-            try:
-                plies = int(head[2])
-            except Exception:
-                plies = None
-            # Persist normalized (win, plies). We intentionally do not persist best_move because keys are normalized.
-            try:
-                db_store_state(db_path, state, win=win, best_move=None, plies=plies)
-            except Exception:
-                pass
-            return SolveResult(win=win, best_move=best_coord, proof_moves=None, plies=plies)
     except Exception:
         pass
     return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
