@@ -75,6 +75,22 @@ def json_to_state(data: Dict[str, Any]) -> GameState:
 
 app = Flask(__name__, static_url_path='', static_folder='static')
 
+# Basic HTTP request/response logging to help diagnose cloud issues
+@app.before_request
+def _http_req_log() -> None:
+    try:
+        _log("http_request", method=request.method, path=request.path)
+    except Exception:
+        pass
+
+@app.after_request
+def _http_resp_log(resp):
+    try:
+        _log("http_response", method=request.method, path=request.path, status=int(resp.status_code))
+    except Exception:
+        pass
+    return resp
+
 # Preflight: require native C++ solver on startup (fail-fast on Render)
 try:
     from game import _find_cpp_exe as _cpp_find
@@ -187,6 +203,40 @@ def _log_summary(gid: str, final_state: GameState, actual_winner: Optional[int])
 def index() -> Any:
     """Serves the main HTML page of the game."""
     return send_from_directory('static', 'index.html')
+
+# Explicit static file routes to ensure correct MIME types on Render
+@app.get('/main.js')
+def static_main_js() -> Any:
+    resp = send_from_directory(app.static_folder, 'main.js')
+    # Force correct JS MIME to avoid strict MIME errors
+    try:
+        resp.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+        resp.headers['Cache-Control'] = 'public, max-age=60'
+    except Exception:
+        pass
+    return resp
+
+@app.get('/styles.css')
+def static_styles_css() -> Any:
+    resp = send_from_directory(app.static_folder, 'styles.css')
+    try:
+        resp.headers['Content-Type'] = 'text/css; charset=utf-8'
+        resp.headers['Cache-Control'] = 'public, max-age=60'
+    except Exception:
+        pass
+    return resp
+
+# Common extras to reduce noise
+@app.get('/favicon.ico')
+def favicon() -> Any:
+    try:
+        return send_from_directory(app.static_folder, 'favicon.ico')
+    except Exception:
+        return ('', 204)
+
+@app.get('/robots.txt')
+def robots() -> Any:
+    return ('User-agent: *\nDisallow:\n', 200, {'Content-Type': 'text/plain; charset=utf-8'})
 
 
 @app.get('/api/logs/list')

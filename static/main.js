@@ -23,6 +23,20 @@ const elSize = document.getElementById('size');
 const elSeed = document.getElementById('seed');
 const elStatus = document.getElementById('statusPanel');
 
+// Basic bootstrap/status so users see something even if JS errors occur
+if (elInfo) elInfo.textContent = 'Loading UI...';
+
+// Global error hooks to surface issues in the page (useful on cloud)
+window.addEventListener('error', (e) => {
+  const msg = `JS error: ${e?.message || e?.error || 'unknown'}`;
+  if (elStatus) elStatus.textContent = msg;
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e?.reason;
+  const msg = `Promise error: ${reason?.message || String(reason)}`;
+  if (elStatus) elStatus.textContent = msg;
+});
+
 let solveReqSeq = 0;
 let movesReqSeq = 0;
 let statusTimer = null;
@@ -130,7 +144,10 @@ async function newGame() {
     body: JSON.stringify({ size, seed }),
   });
   const data = await resp.json();
-  if (!data.ok) return;
+  if (!data.ok) {
+    if (elStatus) elStatus.textContent = `New Game failed: ${data.error || `HTTP ${resp.status}`}`;
+    return;
+  }
   state = data.state;
   aiSide = data.state.aiSide;
   humanSide = data.state.humanSide;
@@ -275,7 +292,10 @@ async function aiMove() {
     body: JSON.stringify({ state }),
   });
   const data = await resp.json();
-  if (!data.ok) return;
+  if (!data.ok) {
+    if (elStatus) elStatus.textContent = `AI move failed: ${data.error || `HTTP ${resp.status}`}`;
+    return;
+  }
   state = data.state;
   legalMoves = data.legalMoves;
   if (data.winner) {
@@ -725,6 +745,16 @@ function clearPiece(which) {
 }
 
 // Auto-start
-newGame();
+console.log('main.js loaded');
+if (elInfo) elInfo.textContent = 'Initializing...';
+newGame().catch((e) => {
+  if (elStatus) elStatus.textContent = `Init error: ${e?.message || String(e)}`;
+});
+// Fallback: if page fully loaded and state still null, try again once
+window.addEventListener('load', () => {
+  if (!state) {
+    newGame().catch(() => {});
+  }
+});
 
 
