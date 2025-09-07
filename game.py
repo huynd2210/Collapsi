@@ -439,34 +439,78 @@ def db_store_state(db_path: str, state: GameState, win: bool, best_move: Optiona
 
 
 def _find_cpp_exe() -> Optional[str]:
-    # Environment override takes precedence
+    """
+    Resolve the native solver path with strong defaults for Render.
+    Order:
+    1) Explicit env vars: COLLAPSI_CPP_EXE, COLLAPSI_CPP (must exist and be executable)
+    2) Well-known absolute path on Render: /opt/render/project/src/collapsi_cpp
+    3) Common build outputs relative to codebase
+    4) PATH lookup (collapsi_cpp[.exe])
+    Set COLLAPSI_DEBUG=1 to print resolution trace.
+    """
+    debug = os.getenv('COLLAPSI_DEBUG', '0').lower() in ('1', 'true', 'yes', 'on')
+
+    def _ok(path: str) -> bool:
+        try:
+            return os.path.exists(path) and os.access(path, os.X_OK)
+        except Exception:
+            return False
+
+    # 1) Environment
     for env_var in ('COLLAPSI_CPP_EXE', 'COLLAPSI_CPP'):
         p = os.getenv(env_var)
-        if p and os.path.exists(p):
+        if p and _ok(p):
+            if debug:
+                print(f"[cpp] using {env_var}={p}")
             return p
+        if p and debug:
+            print(f"[cpp] {env_var} set but not executable: {p}")
 
+    # 2) Render baked-in location
+    render_default = '/opt/render/project/src/collapsi_cpp'
+    if _ok(render_default):
+        if debug:
+            print(f"[cpp] found Render default {render_default}")
+        return render_default
+    elif debug:
+        print(f"[cpp] Render default missing: {render_default}")
+
+    # 3) Relative build outputs
     base = os.path.dirname(__file__)
     candidates = [
-        # Common CMake/Ninja outputs
-        os.path.join(base, 'cpp', 'build-ninja', 'collapsi_cpp.exe'),
-        os.path.join(base, 'cpp', 'build-ninja', 'collapsi_cpp'),
-        os.path.join(base, 'cpp', 'build', 'collapsi_cpp.exe'),
-        os.path.join(base, 'cpp', 'build', 'collapsi_cpp'),
+        os.path.join(base, 'cpp', 'build', 'collapsi_cpp'),               # Linux Ninja/Unix Makefile
+        os.path.join(base, 'cpp', 'build', 'Release', 'collapsi_cpp'),    # Linux Release dir
+        os.path.join(base, 'cpp', 'build', 'collapsi_cpp.exe'),           # Windows
         os.path.join(base, 'cpp', 'build', 'Release', 'collapsi_cpp.exe'),
-        os.path.join(base, 'cpp', 'build', 'Debug', 'collapsi_cpp.exe'),
-        os.path.join(base, 'cpp', 'build-deploy', 'Release', 'collapsi_cpp.exe'),
+        os.path.join(base, 'cpp', 'build-ninja', 'collapsi_cpp'),
+        os.path.join(base, 'cpp', 'build-ninja', 'collapsi_cpp.exe'),
         os.path.join(base, 'cpp', 'build-deploy', 'collapsi_cpp'),
-        # Fallback to PATH
-        'collapsi_cpp',
-        'collapsi_cpp.exe',
+        os.path.join(base, 'cpp', 'build-deploy', 'Release', 'collapsi_cpp.exe'),
     ]
     for p in candidates:
-        if p in ('collapsi_cpp', 'collapsi_cpp.exe'):
-            found = shutil.which(p)
-            if found:
-                return found
-        elif os.path.exists(p):
+        if _ok(p):
+            if debug:
+                print(f"[cpp] found candidate {p}")
             return p
+        elif debug:
+            print(f"[cpp] missing candidate {p}")
+
+    # 4) PATH
+    for name in ('collapsi_cpp', 'collapsi_cpp.exe'):
+        found = shutil.which(name)
+        if found and _ok(found):
+            if debug:
+                print(f"[cpp] found in PATH: {found}")
+            return found
+        elif debug:
+            print(f"[cpp] not in PATH: {name}")
+
+    if debug:
+        try:
+            here = os.getcwd()
+            print(f"[cpp] resolution failed; cwd={here}, files={os.listdir('.')}")
+        except Exception:
+            pass
     return None
 
 

@@ -75,6 +75,17 @@ def json_to_state(data: Dict[str, Any]) -> GameState:
 
 app = Flask(__name__, static_url_path='', static_folder='static')
 
+# Preflight: require native C++ solver on startup (fail-fast on Render)
+try:
+    from game import _find_cpp_exe as _cpp_find
+    REQUIRE_CPP = os.getenv('COLLAPSI_REQUIRE_CPP', 'true').lower() in ('1', 'true', 'yes', 'on')
+    cpp_path = _cpp_find()
+    if REQUIRE_CPP and not cpp_path:
+        raise RuntimeError("C++ solver executable not found at startup. Build it and/or set COLLAPSI_CPP_EXE.")
+except Exception as _e:
+    # Raising here makes misconfiguration obvious in logs and prevents silent degraded behavior
+    raise
+
 # Basic JSON-style logging to stdout (cloud-friendly)
 _logger = logging.getLogger("collapsi")
 if not _logger.handlers:

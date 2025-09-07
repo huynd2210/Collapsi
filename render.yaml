@@ -2,9 +2,10 @@ services:
   - type: web
     name: collapsi
     env: python
+    rootDir: .
     plan: free
     autoDeploy: true
-    buildCommand: pip install -r requirements.txt && pip install cmake ninja && cmake -G Ninja -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release && cmake --build cpp/build --parallel 2 && (cp cpp/build/collapsi_cpp ./collapsi_cpp || true) && (chmod +x ./collapsi_cpp || true)
+    buildCommand: apt-get update && apt-get install -y build-essential ninja-build && pip install -r requirements.txt && pip install cmake ninja && cmake -G Ninja -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release && cmake --build cpp/build --parallel 2 && cp cpp/build/collapsi_cpp ./collapsi_cpp && chmod +x ./collapsi_cpp && echo "Built solver at $(pwd)/collapsi_cpp" && ls -la ./ cpp/build && ./collapsi_cpp --seed 1 >/dev/null
     startCommand: gunicorn -b 0.0.0.0:$PORT app:app
     healthCheckPath: /
     envVars:
@@ -14,6 +15,10 @@ services:
         value: /opt/render/project/src/data/collapsi.db
       - key: COLLAPSI_CPP_EXE
         value: /opt/render/project/src/collapsi_cpp
+      - key: COLLAPSI_REQUIRE_CPP
+        value: true
+      - key: COLLAPSI_DEBUG
+        value: 1
     disks:
       - name: collapsi-data
         mountPath: /opt/render/project/src/data
