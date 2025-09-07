@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir -r /app/Collapsi/requirements.txt
 ENV COLLAPSI_CPP_EXE=/app/Collapsi/collapsi_cpp \
     COLLAPSI_REQUIRE_CPP=true \
     COLLAPSI_DEBUG=1 \
-    COLLAPSI_DB=/opt/render/project/src/data/collapsi.db
+    COLLAPSI_DB=/tmp/collapsi.db
 
 # Run from app dir where app.py lives
 WORKDIR /app/Collapsi
