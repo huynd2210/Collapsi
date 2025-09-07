@@ -9,10 +9,4 @@ services:
     healthCheckPath: /
     envVars:
       - key: COLLAPSI_DB
-        value: /opt/render/project/src/data/collapsi.db
-    disk:
-      name: collapsi-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
-
-
+        value: /tmp/collapsi.db
