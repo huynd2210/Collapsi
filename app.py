@@ -318,30 +318,26 @@ def api_ai() -> Any:
     # - Prefer any winning move with minimal plies
     # - Otherwise, choose the losing move that maximizes plies (delay)
     if move is None:
-        detailed = solve_moves_cpp(state)
-        chosen = None
-        if detailed:
-            wins = [it for it in detailed if bool(it.get('win'))]
-            def pl_val_min(it):
-                pl = it.get('plies')
-                return pl if isinstance(pl, int) else (10**9)
-            def pl_val_max(it):
-                pl = it.get('plies')
-                return pl if isinstance(pl, int) else -1
-            if wins:
-                chosen = min(wins, key=pl_val_min)
-            else:
-                chosen = max(detailed, key=pl_val_max)
-            mv = chosen.get('move') if isinstance(chosen, dict) else None
-            if isinstance(mv, list) and len(mv) == 2:
-                move = (int(mv[0]), int(mv[1]))
-        # Ultimate fallback: pick first legal move
+        detailed = solve_moves_cpp(state)  # must use native solver; no heuristic fallback
+        if not detailed:
+            return jsonify({'ok': False, 'error': 'C++ solver unavailable (no per-move data). Build and set COLLAPSI_CPP_EXE.'}), 500
+        wins = [it for it in detailed if bool(it.get('win'))]
+        def pl_val_min(it):
+            pl = it.get('plies')
+            return pl if isinstance(pl, int) else (10**9)
+        def pl_val_max(it):
+            pl = it.get('plies')
+            return pl if isinstance(pl, int) else -1
+        chosen = min(wins, key=pl_val_min) if wins else max(detailed, key=pl_val_max)
+        mv = chosen.get('move') if isinstance(chosen, dict) else None
+        if isinstance(mv, list) and len(mv) == 2:
+            move = (int(mv[0]), int(mv[1]))
         if move is None:
-            move = tuple(legal[0])
+            return jsonify({'ok': False, 'error': 'C++ solver failed to return a move.'}), 500
 
     # Safety: ensure selected move is legal
     if move not in legal:
-        move = tuple(legal[0])
+        return jsonify({'ok': False, 'error': 'C++ solver suggested an illegal move', 'suggested': move, 'legalMoves': legal}), 500
 
     path = find_example_path(state, move)
 
@@ -432,21 +428,10 @@ def api_solve_moves() -> Any:
     # Prefer C++ detailed output for per-move plies when available
     req_id = str(uuid.uuid4())
     detailed = solve_moves_cpp(state)
-    if detailed:
-        _log("solve_moves", requestId=req_id, state=_state_log_fields(state), count=len(detailed))
-        return jsonify({'ok': True, 'moves': detailed})
-    # Fallback to DB reads
-    items: List[Dict[str, Any]] = []
-    for mv in moves:
-        next_state = apply_move(state, mv)
-        key = _state_key(next_state)
-        looked = db_lookup_state(db_path, key)
-        if looked is not None:
-            win, best, plies = looked
-            items.append({'move': list(mv), 'win': win, 'plies': plies})
-        else:
-            items.append({'move': list(mv), 'win': None, 'plies': None})
-    return jsonify({'ok': True, 'moves': items})
+    if not detailed:
+        return jsonify({'ok': False, 'error': 'C++ solver unavailable for per-move outcomes'}), 500
+    _log("solve_moves", requestId=req_id, state=_state_log_fields(state), count=len(detailed))
+    return jsonify({'ok': True, 'moves': detailed})
 
 
 if __name__ == '__main__':

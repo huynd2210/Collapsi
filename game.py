@@ -572,53 +572,37 @@ def _decode_best_move_byte(val: int) -> Optional[Coord]:
 
 def solve_with_cache(state: GameState, db_path: str, depth_cap: Optional[int] = None) -> SolveResult:
     """
-    Canonical solver: prefer native CLI for consistent plies semantics. Fall back to SQLite when CLI is unavailable.
-    - Always parse plies/best from CLI when possible and write (win, plies) to DB under the normalized key.
-    - Do not persist best_move in DB because the key is normalized (best depends on raw alignment).
+    Canonical solver: must use the native C++ CLI. No heuristic or DB fallbacks.
+    - Parses plies/best from the CLI and writes (win, plies) to SQLite under the normalized key.
+    - Does not persist best_move because normalized keys omit raw alignment.
     """
-    # CLI-first for consistency
-    try:
-        arg = _state_to_cpp_arg(state)
-    except Exception:
-        return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
+    # Always require CLI
+    arg = _state_to_cpp_arg(state)  # may raise for non-4x4
     exe = _find_cpp_exe()
-    if exe:
-        try:
-            proc = subprocess.run([exe, '--state', arg], capture_output=True, text=True, check=False)
-            line = (proc.stdout or '').strip()
-            parts = line.split('|')
-            head = parts[0].strip().split()
-            if len(head) >= 3 and head[0] in ('0', '1'):
-                win = (head[0] == '1')
-                try:
-                    best_raw = int(head[1])
-                except Exception:
-                    best_raw = 255
-                best_coord = _decode_best_move_byte(best_raw)
-                try:
-                    plies = int(head[2])
-                except Exception:
-                    plies = None
-                # Persist normalized (win, plies) for caching
-                try:
-                    db_store_state(db_path, state, win=win, best_move=None, plies=plies)
-                except Exception:
-                    pass
-                return SolveResult(win=win, best_move=best_coord, proof_moves=None, plies=plies)
-        except Exception:
-            # Fall through to DB
-            pass
-
-    # Fallback: DB-only when CLI missing/unavailable
+    if not exe:
+        raise RuntimeError("C++ solver executable not found. Build it and/or set COLLAPSI_CPP_EXE.")
+    proc = subprocess.run([exe, '--state', arg], capture_output=True, text=True, check=False)
+    line = (proc.stdout or '').strip()
+    parts = line.split('|')
+    head = parts[0].strip().split()
+    if len(head) < 3 or head[0] not in ('0', '1'):
+        raise RuntimeError("C++ solver returned malformed output")
+    win = (head[0] == '1')
     try:
-        key = _state_key(state)
-        looked = db_lookup_state(db_path, key)
-        if looked is not None:
-            win_val, best_mv, plies_val = looked
-            return SolveResult(win=bool(win_val), best_move=best_mv, proof_moves=None, plies=plies_val)
+        best_raw = int(head[1])
+    except Exception:
+        best_raw = 255
+    best_coord = _decode_best_move_byte(best_raw)
+    try:
+        plies = int(head[2])
+    except Exception:
+        plies = None
+    # Persist normalized (win, plies) for caching (non-authoritative)
+    try:
+        db_store_state(db_path, state, win=win, best_move=None, plies=plies)
     except Exception:
         pass
-    return SolveResult(win=False, best_move=None, proof_moves=None, plies=None)
+    return SolveResult(win=win, best_move=best_coord, proof_moves=None, plies=plies)
 
 
 def solve_moves_cpp(state: GameState) -> List[Dict[str, Any]]:
@@ -741,9 +725,25 @@ def main() -> None:
         if state.turn == ai_side:
             move = ai_pick_move(state, args.db)
             if move is None:
-                # Fallback: heuristic pick when no forced win known
-                choices = choose_child_by_heuristic(state, moves_me)
-                move = choices[0]
+                # Must use native C++ detailed outcomes; no heuristic fallback
+                detailed = solve_moves_cpp(state)
+                if not detailed:
+                    print("error: C++ solver unavailable; cannot choose a move.")
+                    return
+                wins = [it for it in detailed if bool(it.get('win'))]
+                def _pl_min(it):
+                    pl = it.get('plies')
+                    return pl if isinstance(pl, int) else (10**9)
+                def _pl_max(it):
+                    pl = it.get('plies')
+                    return pl if isinstance(pl, int) else -1
+                chosen = min(wins, key=_pl_min) if wins else max(detailed, key=_pl_max)
+                mv = chosen.get('move') if isinstance(chosen, dict) else None
+                if isinstance(mv, list) and len(mv) == 2:
+                    move = (int(mv[0]), int(mv[1]))
+                if move is None:
+                    print("error: C++ solver failed to return a move.")
+                    return
             print(f"AI moves to {move}")
             if args.show_paths:
                 path = find_example_path(state, move)
