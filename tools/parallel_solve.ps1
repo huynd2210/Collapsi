@@ -1,101 +1,117 @@
 Param(
-  [int]$Shards = [Environment]::ProcessorCount,
-  [int]$PerShard,
-  [int]$Total,
-  [int]$Batch = 20000,
-  [string]$OutDb = ".\data\solved_norm.db",
-  [string]$PartsDir = ".\data\parts",
-  [string]$LogsDir = ".\logs",
-  [switch]$NoDedup,
-  [switch]$NoCleanParts
+  [int]$Stride = $env:NUMBER_OF_PROCESSORS,
+  [int]$Limit = 10000000,
+  [int]$Batch = 1000000,
+  [string]$Out = "out"
 )
 
-# Resolve paths relative to repo root (parent of tools directory)
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$root = [System.IO.Path]::GetFullPath((Join-Path $scriptDir ".."))
-function Resolve-UnderRoot([string]$path){
-  if([System.IO.Path]::IsPathRooted($path)){ return [System.IO.Path]::GetFullPath($path) }
-  return [System.IO.Path]::GetFullPath((Join-Path $root $path))
-}
-$exe = [System.IO.Path]::GetFullPath((Join-Path $root "cpp\build-ninja\solve_norm_db.exe"))
-if(-not (Test-Path $exe)){
-  Write-Error ("solver not found: {0}" -f $exe)
-  exit 1
-}
+# Collapsi local parallel solver runner (Windows, PowerShell)
+# - Configures and builds native tools (solve_norm_db, collapsi_cpp)
+# - Spawns N shard processes in parallel (one per CPU by default)
+# - Merges and deduplicates the output into out\solved_norm.merged.db
+# Usage:
+#   pwsh -File .\tools\parallel_solve.ps1 [-Stride N] [-Limit L] [-Batch B] [-Out PATH]
 
-if(-not $PerShard -and $Total){ $PerShard = [int][Math]::Ceiling($Total / [double]$Shards) }
-if(-not $PerShard){ $PerShard = 1250 }
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-$absOut = Resolve-UnderRoot $OutDb
-$absParts = Resolve-UnderRoot $PartsDir
-$absLogs = Resolve-UnderRoot $LogsDir
-New-Item -ItemType Directory -Force -Path $absParts | Out-Null
-New-Item -ItemType Directory -Force -Path $absLogs | Out-Null
-
-$recSize = 24
-function Get-RecordCount([string]$path){
-  if(-not (Test-Path $path)){ return 0 }
-  $len = (Get-Item $path).Length
-  return [int]([Math]::Floor($len / $recSize))
+function Get-CpuCount {
+  if ($env:NUMBER_OF_PROCESSORS) { return [int]$env:NUMBER_OF_PROCESSORS }
+  else { return 1 }
 }
 
-$startCount = Get-RecordCount $absOut
-$t0 = Get-Date
-$swTotal = [System.Diagnostics.Stopwatch]::StartNew()
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$collapsiRoot = Split-Path -Parent $scriptRoot
+$cppDir = Join-Path $collapsiRoot "cpp"
+$buildDir = Join-Path $cppDir "build-ninja"
+$solverExe = Join-Path $buildDir "solve_norm_db.exe"
+$cppExe = Join-Path $buildDir "collapsi_cpp.exe"
 
-Write-Output ("Launching shards: shards={0} perShard={1} batch={2}" -f $Shards,$PerShard,$Batch)
+Write-Host "[parallel_solve.ps1] Stride=$Stride Limit=$Limit Batch=$Batch Out=$Out"
+Write-Host "[parallel_solve.ps1] Collapsi root: $collapsiRoot"
+
+# Configure and build
+$genArgs = @()
+if (Get-Command ninja -ErrorAction SilentlyContinue) {
+  $genArgs = @("-G","Ninja")
+  Write-Host "[parallel_solve.ps1] Using Ninja generator"
+} else {
+  Write-Host "[parallel_solve.ps1] Ninja not found; using default CMake generator"
+}
+
+Write-Host "[parallel_solve.ps1] Configuring CMake..."
+& cmake -S $cppDir -B $buildDir @genArgs -DCMAKE_BUILD_TYPE=Release
+
+$parJobs = Get-CpuCount
+Write-Host "[parallel_solve.ps1] Building native tools with -j $parJobs ..."
+& cmake --build $buildDir --target solve_norm_db --config Release -- -j $parJobs
+& cmake --build $buildDir --target collapsi_cpp --config Release -- -j $parJobs
+
+# Export for optional Python usage
+$env:COLLAPSI_CPP_EXE = (Resolve-Path $cppExe).Path
+Write-Host "[parallel_solve.ps1] COLLAPSI_CPP_EXE=$($env:COLLAPSI_CPP_EXE)"
+
+# Ensure output directory
+if (-not (Test-Path $Out)) {
+  New-Item -ItemType Directory -Force -Path $Out | Out-Null
+}
+
+# Launch shards
 $procs = @()
-$swShards = [System.Diagnostics.Stopwatch]::StartNew()
-for($i=0;$i -lt $Shards;$i++){
-  $part = Join-Path $absParts ("solved_norm.part{0}.db" -f $i)
-  $log  = Join-Path $absLogs  ("shard{0}-{1}.log" -f $i,(Get-Date -Format "yyyyMMdd-HHmmss"))
-  $args = @("--stride",$Shards,"--offset",$i,"--limit",$PerShard,"--batch",$Batch,"--out",$part,"--seen",$absOut)
-  $p = Start-Process -FilePath $exe -ArgumentList $args -PassThru -WindowStyle Hidden -RedirectStandardOutput $log
+Write-Host "[parallel_solve.ps1] Launching shard processes..."
+for ($i=0; $i -lt $Stride; $i++) {
+  $outFile = Join-Path $Out ("solved_norm.offset{0}.stride{1}.db" -f $i, $Stride)
+  $args = @("--out", $outFile, "--stride", "$Stride", "--offset", "$i", "--limit", "$Limit", "--batch", "$Batch")
+  $p = Start-Process -FilePath $solverExe -ArgumentList $args -PassThru
   $procs += $p
-}
-Write-Output ("Waiting for {0} shards..." -f $procs.Count)
-Wait-Process -Id ($procs | Select-Object -ExpandProperty Id)
-$swShards.Stop()
-
-if(-not (Test-Path $absOut)){
-  New-Item -ItemType File -Path $absOut | Out-Null
-}
-$parts = Get-ChildItem -Path $absParts -Filter "*.db" | Sort-Object Name
-$partsRecords = 0
-foreach($p in $parts){ $partsRecords += Get-RecordCount $p.FullName }
-
-Write-Output ("Merging {0} part files into {1}" -f $parts.Count,$absOut)
-$swMerge = [System.Diagnostics.Stopwatch]::StartNew()
-foreach($part in $parts){
-  $in=[System.IO.File]::OpenRead($part.FullName)
-  $out=[System.IO.File]::Open($absOut,[System.IO.FileMode]::Append,[System.IO.FileAccess]::Write,[System.IO.FileShare]::Read)
-  try { $in.CopyTo($out) } finally { $in.Dispose(); $out.Dispose() }
-}
-$swMerge.Stop()
-
-$dedupMs = 0
-if(-not $NoDedup){
-  Write-Output "Running dedup..."
-  $swD = [System.Diagnostics.Stopwatch]::StartNew()
-  & $exe --dedup $absOut
-  $swD.Stop(); $dedupMs = $swD.ElapsedMilliseconds
+  Write-Host ("  shard {0}/{1} -> {2} (pid={3})" -f $i, $Stride, $outFile, $p.Id)
 }
 
-$swClean = [System.Diagnostics.Stopwatch]::StartNew()
-if(-not $NoCleanParts){
-  Write-Output "Cleaning part files..."
-  Get-ChildItem -Path $absParts -Filter "*.db" | Remove-Item -Force
+# Wait for all processes
+Write-Host "[parallel_solve.ps1] Waiting for shards to complete..."
+$failed = $false
+foreach ($p in $procs) {
+  try {
+    Wait-Process -Id $p.Id
+    $p.Refresh() | Out-Null
+    if ($p.ExitCode -ne 0) {
+      Write-Warning ("Process {0} exited with code {1}" -f $p.Id, $p.ExitCode)
+      $failed = $true
+    }
+  } catch {
+    Write-Warning ("Failed waiting for process {0}: {1}" -f $p.Id, $_.Exception.Message)
+    $failed = $true
+  }
 }
-$swClean.Stop()
+if ($failed) {
+  throw "One or more shard processes failed"
+}
 
-$swTotal.Stop()
-$endCount = Get-RecordCount $absOut
-$added = $endCount - $startCount
-$totalMs = $swTotal.ElapsedMilliseconds
-$rate = if($totalMs -gt 0){ [Math]::Round(($added * 1000.0 / $totalMs),3) } else { 0 }
+# Merge shards (binary-safe)
+$merged = Join-Path $Out "solved_norm.merged.db"
+$shards = Get-ChildItem -Path $Out -Filter "solved_norm.offset*.db" | Sort-Object Name
+if (-not $shards -or $shards.Count -eq 0) {
+  throw "No shard files found to merge in $Out"
+}
 
-Write-Output ("metrics start={0} parts={1} end={2} added={3}" -f $startCount,$partsRecords,$endCount,$added)
-Write-Output ("timings total_ms={0} shards_ms={1} merge_ms={2} dedup_ms={3} clean_ms={4} rate_per_s={5}" -f $totalMs,$swShards.ElapsedMilliseconds,$swMerge.ElapsedMilliseconds,$dedupMs,$swClean.ElapsedMilliseconds,$rate)
-Write-Output "Done."
+Write-Host "[parallel_solve.ps1] Merging $($shards.Count) shard(s) into $merged ..."
+# Binary-safe merge using FileStreams
+$fsOut = [System.IO.File]::Open($merged, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+try {
+  foreach ($f in $shards) {
+    $fsIn = [System.IO.File]::Open($f.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+    try {
+      $fsIn.CopyTo($fsOut)
+    } finally {
+      $fsIn.Dispose()
+    }
+  }
+} finally {
+  $fsOut.Dispose()
+}
 
+# Deduplicate merged DB (in place)
+Write-Host "[parallel_solve.ps1] Deduplicating merged DB..."
+& $solverExe --dedup $merged
 
+Write-Host "[parallel_solve.ps1] DONE. Merged at $merged"
