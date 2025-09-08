@@ -20,7 +20,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${here}/.." && pwd)"
-CPP_DIR="${REPO_ROOT}/Collapsi/cpp"
+CPP_DIR="${REPO_ROOT}/cpp"
 BUILD_DIR="${CPP_DIR}/build-ninja"
 SOLVER_BIN="${BUILD_DIR}/solve_norm_db"
 CPP_BIN="${BUILD_DIR}/collapsi_cpp"
