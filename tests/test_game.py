@@ -22,14 +22,14 @@ def make_board(rows):
 
 
 class TestCollapsiBasics(unittest.TestCase):
-    def test_card_steps_values(self):
+    def test_given_card_letters_when_querying_steps_then_expected_values(self):
         self.assertEqual(card_steps('J'), 1)
         self.assertEqual(card_steps('A'), 1)
         self.assertEqual(card_steps('2'), 2)
         self.assertEqual(card_steps('3'), 3)
         self.assertEqual(card_steps('4'), 4)
 
-    def test_wrap_around_moves_from_corner(self):
+    def test_given_corner_a_when_stepping_one_then_wraparound_moves_exist(self):
         board = make_board([
             ['A', '2', '2', '2'],
             ['2', '2', '2', '2'],
@@ -44,7 +44,7 @@ class TestCollapsiBasics(unittest.TestCase):
         self.assertIn((0, 3), moves)
         self.assertIn((3, 0), moves)
 
-    def test_cannot_end_on_opponent(self):
+    def test_given_adjacent_opponent_when_generating_moves_then_opponent_square_excluded(self):
         board = make_board([
             ['A', '2', '2', '2'],
             ['2', '2', '2', '2'],
@@ -57,7 +57,7 @@ class TestCollapsiBasics(unittest.TestCase):
         moves = set(legal_moves(state))
         self.assertNotIn(p2, moves)
 
-    def test_apply_move_collapses_and_switches_turn(self):
+    def test_given_start_state_when_apply_move_then_collapses_and_turn_switches(self):
         board = make_board([
             ['A', '2', '2', '2'],
             ['2', '2', '2', '2'],
@@ -74,7 +74,7 @@ class TestCollapsiBasics(unittest.TestCase):
         self.assertEqual(new_state.p1, (0, 1))
         self.assertEqual(new_state.p2, p2)
 
-    def test_legal_moves_blocked_by_collapsed(self):
+    def test_given_blocked_neighbors_when_generating_moves_then_no_moves(self):
         board = make_board([
             ['A', '2', '2', '2'],
             ['2', '2', '2', '2'],
@@ -89,14 +89,14 @@ class TestCollapsiBasics(unittest.TestCase):
 
 
 class TestAOSolver(unittest.TestCase):
-    def test_3x3_deal_runs(self):
+    def test_given_seed_when_deal_3x3_then_deck_distribution_valid(self):
         board, p1, p2 = deal_board_3x3(seed=42)
         flat = list(board.grid)
         self.assertEqual(flat.count('J'), 2)
         self.assertEqual(flat.count('A'), 4)
         self.assertEqual(flat.count('2'), 3)
 
-    def test_path_is_orthogonal(self):
+    def test_given_two_step_path_when_find_example_path_then_moves_are_orthogonal(self):
         # Construct a small case where from (0,2) to (2,0) requires 2 orthogonal steps via wrap
         board = make_board([
             ['A', 'A', 'A'],
