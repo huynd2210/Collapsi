@@ -24,4 +24,8 @@ target_link_libraries(solve_norm_db PRIVATE collapsi_core)
 add_executable(list_derivations src/list_derivations.cpp)
 target_link_libraries(list_derivations PRIVATE collapsi_core)
 
+# Lazy index generator: builds norm_index.db from solved_norm.db by enumerating canonical 4x4 boards
+add_executable(gen_index src/gen_index.cpp)
+target_link_libraries(gen_index PRIVATE collapsi_core)
+
 

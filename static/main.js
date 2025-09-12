@@ -135,6 +135,12 @@ document.getElementById('editToggle').addEventListener('click', () => toggleEdit
 document.getElementById('solve').addEventListener('click', () => doSolve());
 // Editor-only controls are shown in UI as the single Solve button when in edit mode
 
+const elFindDb = document.getElementById('findDb');
+if (elFindDb) {
+  elFindDb.style.display = '';
+  elFindDb.addEventListener('click', () => doFindInDb());
+}
+
 async function newGame() {
   const size = elSize.value;
   const seed = elSeed.value ? Number(elSeed.value) : null;
@@ -662,6 +668,33 @@ function getCellToken(r, c, collapsedSet) {
   return state.board.grid[r * state.board.width + c];
 }
 
+function doFindInDb() {
+  if (!state) return;
+  // Send current state to server to search in solved DB (uses defaults on server)
+  fetch('/api/solved/find', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (!data || !data.ok) {
+        alert(`Find error: ${data?.error || 'unknown'}`);
+        return;
+      }
+      if (!data.found) {
+        alert('Not found in solved DB (normalized key not present).');
+        return;
+      }
+      const rec = data.record;
+      const mover = rec.turn === 0 ? 'X' : 'O';
+      alert(`Found\nkey=${rec.keyHex}|${rec.turn}\nmover=${mover}\nwin=${rec.win}\nplies=${rec.plies}\n\nOpen the Viz page (/viz) to browse around this result.\nUse the Play buttons in Viz to load boards back into this UI.`);
+    })
+    .catch(() => {
+      alert('Find error');
+    });
+}
+
 function doSolve() {
   suggestedMove = null;
   // validate exactly one X and one O placed
@@ -744,17 +777,63 @@ function clearPiece(which) {
   refreshLegal();
 }
 
+async function initFromStorage() {
+ try {
+   const raw = localStorage.getItem('collapsi.playState');
+   if (!raw) return false;
+   const saved = JSON.parse(raw);
+   const resp = await fetch('/api/new_from', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ state: saved }),
+   });
+   const data = await resp.json();
+   if (!data || !data.ok) return false;
+   // Set app state from server-provided state (ensures sides and legality)
+   state = data.state;
+   aiSide = data.state.aiSide;
+   humanSide = data.state.humanSide;
+   legalMoves = data.legalMoves;
+   gameOver = false;
+   winnerSide = null;
+   suggestedMove = null;
+   // Reset history
+   history = [];
+   const rootId = genId();
+   history.push({ id: rootId, parentId: null, state: deepClone(state), move: null, children: [] });
+   currentNodeId = rootId;
+   linearStack = [rootId];
+   linearIndex = 0;
+   render();
+   await updateStatusPanel();
+   await updateMovePlies();
+   await maybeAutoAI();
+   // consume it once
+   localStorage.removeItem('collapsi.playState');
+   return true;
+ } catch {
+   try { localStorage.removeItem('collapsi.playState'); } catch {}
+   return false;
+ }
+}
+
 // Auto-start
 console.log('main.js loaded');
 if (elInfo) elInfo.textContent = 'Initializing...';
-newGame().catch((e) => {
-  if (elStatus) elStatus.textContent = `Init error: ${e?.message || String(e)}`;
+initFromStorage().then((used) => {
+ if (!used) {
+   newGame().catch((e) => {
+     if (elStatus) elStatus.textContent = `Init error: ${e?.message || String(e)}`;
+   });
+ }
 });
 // Fallback: if page fully loaded and state still null, try again once
 window.addEventListener('load', () => {
-  if (!state) {
-    newGame().catch(() => {});
-  }
+ if (!state) {
+   initFromStorage().then((used) => {
+     if (!used) newGame().catch(() => {});
+   });
+ }
 });
 
 

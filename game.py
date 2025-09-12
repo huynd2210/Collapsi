@@ -7,61 +7,138 @@ from __future__ import annotations
 # Keep subprocess import here so tests can patch game.subprocess.run
 import subprocess  # noqa: F401
 
-# Types
-from collapsi_core.board import Board, Card, Coord
-from collapsi_core.state import GameState
-
-# Deal
-from collapsi_core.deal import deal_board_3x3, deal_board_4x4
-
-# Moves and rules
-from collapsi_core.moves import (
-    card_steps,
-    wrap_step,
-    neighbors,
-    enumerate_destinations,
-    legal_moves,
-    apply_move,
-    find_example_path,
-    opponent_move_count_after,
-    choose_child_by_heuristic,
-)
-
-# AI
-from collapsi_core.ai import (
-    choose_ai_side_for_board,
-    ai_pick_move,
-)
-
-# Normalization and hashing
-from collapsi_core.normalize import (
-    normalize_for_torus_view,
-    _shift_coord,
-    _shift_grid_str,
-    _normalize_for_torus,
-)
-from collapsi_core.hashkey import (
-    _state_key as _state_key,
-    _raw_state_key as _raw_state_key,
-)
-
-# Persistence
-from collapsi_core.db import (
-    _ensure_db_dir,
-    _resolve_db_path,
-    db_lookup_state,
-    db_store_state,
-)
-
-# Native solver CLI (implementation)
-from collapsi_core.solver_cli import (
-    SolveResult,
-    _find_cpp_exe,
-    _state_to_cpp_arg,
-    _decode_best_move_byte,
-    solve_with_cache_impl,
-    solve_moves_cpp_impl,
-)
+# Robust imports so this module works when executed as part of the Collapsi
+# package or imported directly. Prefer relative, then absolute package, then legacy top-level.
+try:
+    from .collapsi_core.board import Board, Card, Coord  # type: ignore
+    from .collapsi_core.state import GameState  # type: ignore
+    from .collapsi_core.deal import deal_board_3x3, deal_board_4x4  # type: ignore
+    from .collapsi_core.moves import (  # type: ignore
+        card_steps,
+        wrap_step,
+        neighbors,
+        enumerate_destinations,
+        legal_moves,
+        apply_move,
+        find_example_path,
+        opponent_move_count_after,
+        choose_child_by_heuristic,
+    )
+    from .collapsi_core.ai import (  # type: ignore
+        choose_ai_side_for_board,
+        ai_pick_move,
+    )
+    from .collapsi_core.normalize import (  # type: ignore
+        normalize_for_torus_view,
+        _shift_coord,
+        _shift_grid_str,
+        _normalize_for_torus,
+    )
+    from .collapsi_core.hashkey import (  # type: ignore
+        _state_key as _state_key,
+        _raw_state_key as _raw_state_key,
+    )
+    from .collapsi_core.db import (  # type: ignore
+        _ensure_db_dir,
+        _resolve_db_path,
+        db_lookup_state,
+        db_store_state,
+    )
+    from .collapsi_core.solver_cli import (  # type: ignore
+        SolveResult,
+        _find_cpp_exe,
+        _state_to_cpp_arg,
+        _decode_best_move_byte,
+        solve_with_cache_impl,
+        solve_moves_cpp_impl,
+    )
+except Exception:
+    try:
+        from Collapsi.collapsi_core.board import Board, Card, Coord  # type: ignore
+        from Collapsi.collapsi_core.state import GameState  # type: ignore
+        from Collapsi.collapsi_core.deal import deal_board_3x3, deal_board_4x4  # type: ignore
+        from Collapsi.collapsi_core.moves import (  # type: ignore
+            card_steps,
+            wrap_step,
+            neighbors,
+            enumerate_destinations,
+            legal_moves,
+            apply_move,
+            find_example_path,
+            opponent_move_count_after,
+            choose_child_by_heuristic,
+        )
+        from Collapsi.collapsi_core.ai import (  # type: ignore
+            choose_ai_side_for_board,
+            ai_pick_move,
+        )
+        from Collapsi.collapsi_core.normalize import (  # type: ignore
+            normalize_for_torus_view,
+            _shift_coord,
+            _shift_grid_str,
+            _normalize_for_torus,
+        )
+        from Collapsi.collapsi_core.hashkey import (  # type: ignore
+            _state_key as _state_key,
+            _raw_state_key as _raw_state_key,
+        )
+        from Collapsi.collapsi_core.db import (  # type: ignore
+            _ensure_db_dir,
+            _resolve_db_path,
+            db_lookup_state,
+            db_store_state,
+        )
+        from Collapsi.collapsi_core.solver_cli import (  # type: ignore
+            SolveResult,
+            _find_cpp_exe,
+            _state_to_cpp_arg,
+            _decode_best_move_byte,
+            solve_with_cache_impl,
+            solve_moves_cpp_impl,
+        )
+    except Exception:
+        from collapsi_core.board import Board, Card, Coord  # type: ignore
+        from collapsi_core.state import GameState  # type: ignore
+        from collapsi_core.deal import deal_board_3x3, deal_board_4x4  # type: ignore
+        from collapsi_core.moves import (  # type: ignore
+            card_steps,
+            wrap_step,
+            neighbors,
+            enumerate_destinations,
+            legal_moves,
+            apply_move,
+            find_example_path,
+            opponent_move_count_after,
+            choose_child_by_heuristic,
+        )
+        from collapsi_core.ai import (  # type: ignore
+            choose_ai_side_for_board,
+            ai_pick_move,
+        )
+        from collapsi_core.normalize import (  # type: ignore
+            normalize_for_torus_view,
+            _shift_coord,
+            _shift_grid_str,
+            _normalize_for_torus,
+        )
+        from collapsi_core.hashkey import (  # type: ignore
+            _state_key as _state_key,
+            _raw_state_key as _raw_state_key,
+        )
+        from collapsi_core.db import (  # type: ignore
+            _ensure_db_dir,
+            _resolve_db_path,
+            db_lookup_state,
+            db_store_state,
+        )
+        from collapsi_core.solver_cli import (  # type: ignore
+            SolveResult,
+            _find_cpp_exe,
+            _state_to_cpp_arg,
+            _decode_best_move_byte,
+            solve_with_cache_impl,
+            solve_moves_cpp_impl,
+        )
 
 
 def _run_proc_patchable(exe: str, arg: str) -> str:
@@ -97,7 +174,13 @@ def aostar_solve(state: GameState, *args, **kwargs) -> SolveResult:
 
 def main() -> None:
     # CLI driver delegated to collapsi_core.cli
-    from collapsi_core.cli import main as _main
+    try:
+        from .collapsi_core.cli import main as _main  # type: ignore
+    except Exception:
+        try:
+            from Collapsi.collapsi_core.cli import main as _main  # type: ignore
+        except Exception:
+            from collapsi_core.cli import main as _main  # type: ignore
     _main()
 
 

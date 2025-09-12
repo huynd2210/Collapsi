@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Collapsi Viz</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* High-contrast dark theme for viz */
+      .mini-board {
+        display: grid;
+        gap: 4px;
+      }
+      .mini-cell {
+        /* size is controlled by JS gridTemplateColumns for best responsiveness */
+        border: 1px solid #475569; /* slate-600 */
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0b1220;   /* dark panel */
+        color: #e2e8f0;        /* slate-200 */
+        border-radius: 4px;
+      }
+      .mini-p1 { background: #3b82f6; color: #0b1220; font-weight: 800; } /* blue-500 */
+      .mini-p2 { background: #f59e0b; color: #0b1220; font-weight: 800; } /* amber-500 */
+      .mini-collapsed { background: #111827; color: #94a3b8; } /* charcoal with muted text */
+
+      .viz-toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .viz-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 14px;
+      }
+      .viz-card {
+        border: 1px solid #334155; /* slate-700 */
+        border-radius: 10px;
+        padding: 12px;
+        background: #0b1220;   /* dark panel */
+        color: #e2e8f0;
+        box-shadow: 0 10px 20px rgba(2,6,23,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+      }
+      .viz-card-title {
+        font-size: 16px;
+        font-weight: 800;
+        color: #e2e8f0;
+        margin-bottom: 8px;
+        letter-spacing: 0.2px;
+      }
+      .viz-card .meta {
+        font-size: 13px;
+        color: #94a3b8; /* improve contrast on dark */
+        margin-top: 8px;
+      }
+      .viz-actions {
+        margin-top: 10px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .viz-variants {
+        margin-top: 12px;
+        border-top: 1px dashed #334155;
+        padding-top: 10px;
+      }
+      .variants-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px;
+      }
+      .variant-card {
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 8px;
+        background: #111827;
+        color: #e2e8f0;
+      }
+      .stats {
+        padding: 10px;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        background: #0b1220;
+        font-size: 14px;
+        color: #cbd5e1;
+      }
+      .pager {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        align-items: center;
+      }
+      .btn-sm {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+      .muted {
+        color: #94a3b8;  /* high-contrast muted */
+        font-size: 12px;
+      }
+      .path-input {
+        min-width: 320px;
+        background: #0b1220;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 6px 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Collapsi — Solved DB Visualization</h1>
+
+      <div class="viz-toolbar">
+        <label>DB:
+          <input id="dbPath" class="path-input" type="text" value="data/solved_norm.merged.db" />
+        </label>
+        <label>Index:
+          <input id="indexPath" class="path-input" type="text" value="data/norm_index.db" placeholder="data/norm_index.db" />
+        </label>
+        <label>norm2raw dir:
+          <input id="norm2rawDir" class="path-input" type="text" value="cpp/data/norm2raw" />
+        </label>
+        <button id="refreshStats" class="btn btn-primary btn-sm">Refresh Stats</button>
+        <span id="status" class="muted"></span>
+      </div>
+
+      <div id="statsPanel" class="stats"></div>
+
+      <div class="pager">
+        <button id="prevPage" class="btn btn-outline btn-sm">Prev</button>
+        <button id="nextPage" class="btn btn-outline btn-sm">Next</button>
+        <span id="pageInfo" class="muted"></span>
+      </div>
+
+      <div id="cards" class="viz-grid"></div>
+
+      <div class="pager">
+        <button id="prevPage2" class="btn btn-outline btn-sm">Prev</button>
+        <button id="nextPage2" class="btn btn-outline btn-sm">Next</button>
+        <span id="pageInfo2" class="muted"></span>
+      </div>
+    </div>
+
+    <script src="viz.js"></script>
+  </body>
+</html>

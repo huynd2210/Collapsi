@@ -55,8 +55,6 @@ Record layout and semantics
     - Helpers in C++: [solver.encode_move()](Collapsi/cpp/include/solver.hpp:38), [solver.move_from()](Collapsi/cpp/include/solver.hpp:39), [solver.move_to()](Collapsi/cpp/include/solver.hpp:40)
   - plies: distance to terminal (≥1 when win==1; typically 0..50 on 4x4).
 
-Important: The on-disk record size may differ across builds/platforms due to struct packing/padding. Use the Python reader which auto-detects the format instead of assuming fixed size.
-
 Reading records (CLI)
 - Text format (first 5):
   ```
@@ -105,48 +103,8 @@ Quick anomaly checks
   ```
   Script: [check_zero_keys.py](Collapsi/tools/check_zero_keys.py).
 
-Per-batch health during generation (solver logs)
-- The batch generator prints “health … status=OK/ANOMALY” after each flush:
-  - Code path: [solve_norm_db.cpp](Collapsi/cpp/src/solve_norm_db.cpp)
-  - Shard logs under Collapsi/logs; find health lines (PowerShell):
-    ```
-    Get-ChildItem .\Collapsi\logs\shard*-*.log |
-      Select-String '^\s*health ' |
-      Sort-Object Path |
-      ForEach-Object { $_.Line }
-    ```
-- To aggregate latest run (example window 15 minutes):
-  ```
-  $cutoff=(Get-Date).AddMinutes(-15)
-  $lines=Get-ChildItem .\Collapsi\logs\shard*-*.log |
-    Where-Object {$_.LastWriteTime -gt $cutoff} |
-    Select-String '^\s*health ' | ForEach-Object {$_.Line}
-  $stats=$lines | ForEach-Object {
-    if ($_ -match 'batch_n=(?<n>\d+).*win_rate=(?<wr>[0-9.]+).*avg_plies=(?<ap>[0-9.]+).*min_plies=(?<mn>\d+).*max_plies=(?<mx>\d+).*t0=(?<t0>\d+).*t1=(?<t1>\d+).*zero_keys=(?<zk>\d+).*bad_move=(?<bm>\d+).*plies_anom=(?<pa>\d+)') {
-      [pscustomobject]@{
-        n=[int]$Matches.n; wins=([double]$Matches.wr*[int]$Matches.n); plies=([double]$Matches.ap*[int]$Matches.n);
-        mn=[int]$Matches.mn; mx=[int]$Matches.mx; t0=[int]$Matches.t0; t1=[int]$Matches.t1; zk=[int]$Matches.zk; bm=[int]$Matches.bm; pa=[int]$Matches.pa
-      }
-    }
-  }
-  $N=($stats|Measure-Object n -Sum).Sum
-  $W=($stats|Measure-Object wins -Sum).Sum
-  $P=($stats|Measure-Object plies -Sum).Sum
-  $mn=($stats|Measure-Object mn -Minimum).Minimum
-  $mx=($stats|Measure-Object mx -Maximum).Maximum
-  $t0=($stats|Measure-Object t0 -Sum).Sum
-  $t1=($stats|Measure-Object t1 -Sum).Sum
-  $zk=($stats|Measure-Object zk -Sum).Sum
-  $bm=($stats|Measure-Object bm -Sum).Sum
-  $pa=($stats|Measure-Object pa -Sum).Sum
-  "{0} rec, win_rate={1:N3}, avg_plies={2:N3}, min={3}, max={4}, t0={5}, t1={6}, zero_keys={7}, bad_move={8}, plies_anom={9}" -f $N,($W/$N),($P/$N),$mn,$mx,$t0,$t1,$zk,$bm,$pa
-  ```
-
 Index-to-grid mapping (4×4)
 - Indices 0..15 map row-major:
   - 0..3 = row 0, 4..7 = row 1, 8..11 = row 2, 12..15 = row 3
   - (r,c) = (idx // 4, idx % 4)
 
-Notes
-- Prefer the Python reader for portability; it auto-detects the binary layout (see [read_records._detect_solved_record_format_from_path](Collapsi/tools/read_records.py:112)).
-- The batch generator’s record definition and padding are authoritative for the current build (see [solve_norm_db.cpp](Collapsi/cpp/src/solve_norm_db.cpp)); future builds may adjust padding, which is why the Python reader probes format heuristically.
