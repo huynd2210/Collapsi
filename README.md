@@ -3,6 +3,8 @@ Collapsi
 
 AO* solver for Collapsi with SQLite caching and a simple Flask web UI.
 
+Play against the unbeatable AI here: https://collapsi.onrender.com/
+
 Quickstart
 ----------
 
